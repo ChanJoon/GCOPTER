@@ -498,9 +498,14 @@ void Controller::update(
 	// }
 	const Eigen::Quaterniond desired_attitude = computeDesiredAttitude(F_des/param.mass, des.yaw, odom.q);
 	const Eigen::Vector3d feedback_bodyrates = computeFeedBackControlBodyrates(desired_attitude, odom.q);
+	//MEMO: Somewhat 'feedback_bodyrates' are so noisy, only use reference_inputs works well (in OFFBOARD) but those values are just [9.81, 0, 0, 0].
 	u.roll_rate = reference_inputs.roll_rate+feedback_bodyrates.x();
+	// u.roll_rate = reference_inputs.roll_rate;
 	u.pitch_rate = reference_inputs.pitch_rate+feedback_bodyrates.y();
+	// u.pitch_rate = reference_inputs.pitch_rate;
 	u.yaw_rate = reference_inputs.yaw_rate+feedback_bodyrates.z();
+	// u.roll_rate = 0.0;
+	// u.pitch_rate = 0.0;
 	
 	ROS_INFO_STREAM("Reference input thrust: " << reference_inputs.normalized_thrust << " roll_rate: " << reference_inputs.roll_rate << " yaw rate: " << reference_inputs.yaw_rate);
 	ROS_INFO_STREAM("feedback bodyrate x: " << feedback_bodyrates.x() << " y: " << feedback_bodyrates.y() << " z: " << feedback_bodyrates.z());

@@ -25,7 +25,7 @@
   </node>
   
   <node pkg="px4_controller" type="simple_planning" name="simple_planning_node" output="screen">
-  <rosparam file="$(find px4_controller)/config/simple_planning.yaml" command="load" />
+  	<rosparam file="$(find px4_controller)/config/simple_planning.yaml" command="load" />
   </node>
 
 </launch>

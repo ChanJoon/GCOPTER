@@ -96,6 +96,7 @@ private:
     ros::Timer controlTimer;
 
     bool mapInitialized;
+    bool odomInitialized = false;
     voxel_map::VoxelMap voxelMap;
     Visualizer visualizer;
     std::vector<Eigen::Vector3d> startGoal;
@@ -105,6 +106,7 @@ private:
 
     quadrotor_msgs::PolynomialTrajectory traj_msg;
     quadrotor_msgs::PositionCommand cmd;
+    nav_msgs::Odometry init_odom;
     nav_msgs::Odometry odom;
 
     int _n_segment = 0;
@@ -154,47 +156,54 @@ public:
 
 		inline void odomCallback(const nav_msgs::Odometry &msg)
 		{
-			odom = msg;
-
-			if(state == INIT )
+			if (!odomInitialized)
 			{
-					cmd.position.x = odom.pose.pose.position.x;
-					cmd.position.y = odom.pose.pose.position.y;
-					cmd.position.z = 1.0;
-					
-					cmd.header.stamp = odom.header.stamp;
-					cmd.header.frame_id = "/world_enu";
-					//cmd.trajectory_flag = _traj_flag;
-					cmd.trajectory_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_READY;
-
-					cmd.velocity.x = 0.0;
-					cmd.velocity.y = 0.0;
-					cmd.velocity.z = 0.0;
-					
-					cmd.acceleration.x = 0.0;
-					cmd.acceleration.y = 0.0;
-					cmd.acceleration.z = 0.0;
-
-					cmd.jerk.x = 0.0;
-					cmd.jerk.y = 0.0;
-					cmd.jerk.z = 0.0;
-					cmd.yaw = acos(-1)/2;	// == PI / 2
-					cmdPub.publish(cmd);
-
-					return;
+				init_odom = msg;
+				odomInitialized = true;
 			}
-
-			// change the order between #2 and #3. zxzxzxzx
-			
-			// #2. try to calculate the new state
-			if (state == TRAJ && ( (odom.header.stamp - _start_time).toSec() / mag_coeff > (_final_time - _start_time).toSec() ) )
+			else
 			{
-					state = HOVER;
-					_traj_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_COMPLETED;
-			}
+				odom = msg;
+				if(state == INIT )
+				{
+						cmd.position.x = init_odom.pose.pose.position.x;
+						cmd.position.y = init_odom.pose.pose.position.y;
+						cmd.position.z = 3.0;		// Temporailiy set to 3.0 m
+						
+						cmd.header.stamp = odom.header.stamp;
+						cmd.header.frame_id = "/world_enu";
+						//cmd.trajectory_flag = _traj_flag;
+						cmd.trajectory_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_READY;
 
-			// #3. try to publish command
-			pubPositionCommand();
+						cmd.velocity.x = 0.0;
+						cmd.velocity.y = 0.0;
+						cmd.velocity.z = 0.0;
+						
+						cmd.acceleration.x = 0.0;
+						cmd.acceleration.y = 0.0;
+						cmd.acceleration.z = 0.0;
+
+						cmd.jerk.x = 0.0;
+						cmd.jerk.y = 0.0;
+						cmd.jerk.z = 0.0;
+						cmd.yaw = acos(-1)/2;	// == PI / 2
+						cmdPub.publish(cmd);
+
+						return;
+				}
+
+				// change the order between #2 and #3. zxzxzxzx
+				
+				// #2. try to calculate the new state
+				if (state == TRAJ && ( (odom.header.stamp - _start_time).toSec() / mag_coeff > (_final_time - _start_time).toSec() ) )
+				{
+						state = HOVER;
+						_traj_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_COMPLETED;
+				}
+
+				// #3. try to publish command
+				pubPositionCommand();
+			}
 		}
 
     inline quadrotor_msgs::PolynomialTrajectory traj2msg(Trajectory<5> traj)
@@ -402,7 +411,7 @@ public:
         }
         // #4. just publish
         cmdPub.publish(cmd);
-        // ROS_INFO("Current state: %d, 0: INIT, 1: TRAJ, 2: HOVER", state);
+        ROS_INFO("Current state: %d, 0: INIT, 1: TRAJ, 2: HOVER", state);
     }
 
     inline void mapCallBack(const sensor_msgs::PointCloud2::ConstPtr &msg)
@@ -609,6 +618,7 @@ public:
                 visualizer.visualizeSphere(traj.getPos(delta),
                                            config.dilateRadius);
 
+							// Open-loop control (No Feedback)
                 // mavros_msgs::AttitudeTarget attMsg;
                 // attMsg.header.stamp = ros::Time::now();
                 // attMsg.header.frame_id = std::string("FCU");

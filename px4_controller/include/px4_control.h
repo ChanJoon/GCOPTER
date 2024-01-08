@@ -152,20 +152,23 @@ void Control::process()
 		default:
 			break;
 	}
+
+	// controller.config_gain(param.track_gain);
+	// process_cmd_control(u, u_so3);
 	
-	if (state == AUTO_HOVER){
-		//MEMO: Currently, use Controll_Output_t of 'process_hover_control' is unstable for hovering
-		// So just use position control
-		Desired_State_t des;
-		des.p = hover_pose.head<3>();
-		des.v = Eigen::Vector3d::Zero();
-		des.yaw = hover_pose(3);
-		des.a = Eigen::Vector3d::Zero();
-		des.jerk = Eigen::Vector3d::Zero();
-		publish_desire(des);
-	}
-	else if (state == CMD_CTRL)
-		controller.publish_ctrl(u, now_time);
+	// if (state == AUTO_HOVER){
+	// 	//MEMO: Currently, use Controll_Output_t of 'process_hover_control' is unstable for hovering
+	// 	// So just use position control
+	// 	Desired_State_t des;
+	// 	des.p = hover_pose.head<3>();
+	// 	des.v = Eigen::Vector3d::Zero();
+	// 	des.yaw = hover_pose(3);
+	// 	des.a = Eigen::Vector3d::Zero();
+	// 	des.jerk = Eigen::Vector3d::Zero();
+	// 	publish_desire(des);
+	// }
+	// else if (state == CMD_CTRL)
+	controller.publish_ctrl(u, now_time);
 	hov_thr_kf.simple_update(u.des_v_real, odom_data.v );
 	// This line may not take effect according to param.hov.use_hov_percent_kf
 	param.config_full_thrust(hov_thr_kf.get_hov_thr());
@@ -247,28 +250,28 @@ void Control::align_with_imu(Controller_Output_t& u)
 void Control::set_hov_with_odom()
 {
 	hover_pose.head<3>() = odom_data.p;
-	hover_pose(2) = 3.0; // Temporailiy set to 3.0 m
+	// hover_pose(2) = 3.0; // Temporailiy set to 3.0 m
 	hover_pose(3) = get_yaw_from_odom();
 }
 
-void Control::publish_desire(const Desired_State_t& des)
-{
-	geometry_msgs::PoseStamped msg;
-	msg.header = odom_data.msg.header;
+// void Control::publish_desire(const Desired_State_t& des)
+// {
+// 	geometry_msgs::PoseStamped msg;
+// 	msg.header = odom_data.msg.header;
 
-	msg.pose.position.x = des.p(0);
-	msg.pose.position.y = des.p(1);
-	msg.pose.position.z = des.p(2);
+// 	msg.pose.position.x = des.p(0);
+// 	msg.pose.position.y = des.p(1);
+// 	msg.pose.position.z = des.p(2);
 
-	Eigen::Quaterniond q = uav_utils::yaw_to_quaternion(des.yaw);
+// 	Eigen::Quaterniond q = uav_utils::yaw_to_quaternion(des.yaw);
 
-	msg.pose.orientation.w = q.w();
-	msg.pose.orientation.x = q.x();
-	msg.pose.orientation.y = q.y();
-	msg.pose.orientation.z = q.z();
+// 	msg.pose.orientation.w = q.w();
+// 	msg.pose.orientation.x = q.x();
+// 	msg.pose.orientation.y = q.y();
+// 	msg.pose.orientation.z = q.z();
 
-	des_pose_pub.publish(msg);
-}
+// 	des_pose_pub.publish(msg);
+// }
 
 void Control::toggle_offboard_mode(bool on_off)
 {	

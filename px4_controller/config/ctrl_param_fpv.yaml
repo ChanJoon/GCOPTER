@@ -77,8 +77,10 @@ gain:
         Ka0: 1.0
         Ka1: 1.0
         Ka2: 1.0
-        Kyaw: 10.0 # 15.0
-        Krp: 30.0 #25
+        # Kyaw: 10.0 # 15.0
+        Kyaw: 0.0
+        # Krp: 30.0 #25
+        Krp: 5.0
 
 msg_timeout:
     odom: 0.5

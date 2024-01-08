@@ -78,8 +78,6 @@ int main(int argc, char* argv[]) {
         if(fsm.px4_init()){
             fsm.process();
         }
-        else
-            ROS_WARN("px4 not ready!!!");
     }
 
     return 0;
