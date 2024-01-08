@@ -110,10 +110,14 @@ class Odom_Data_t {
     nav_msgs::Odometry msg;
     ros::Time rcv_stamp;
     bool odom_init;
+    ros::Publisher debug_odom_pub;
+    ros::NodeHandle nh_;
+
     Odom_Data_t(){
       rcv_stamp = ros::Time(0);
       q.setIdentity();
       odom_init = false;
+      debug_odom_pub = nh_.advertise<nav_msgs::Odometry>("/debug_odom", 10);
     };
 
     void feed(nav_msgs::OdometryConstPtr pMsg){
@@ -121,6 +125,10 @@ class Odom_Data_t {
       rcv_stamp = ros::Time::now();
       uav_utils::extract_odometry(pMsg, p, v, q, w);
       odom_init = true;
+
+      msg.header.stamp = rcv_stamp;
+      msg.header.frame_id = "odom";     // instead of "map", transform to "odom" (global_planning visualization)
+      debug_odom_pub.publish(msg);
     };
 };
 
@@ -185,10 +193,14 @@ class Command_Data_t {
     bool cmd_init;
     quadrotor_msgs::PositionCommand msg;
     ros::Time rcv_stamp;
+    ros::Publisher debug_cmd_pub;
+    nav_msgs::Odometry des_odom_msg;
+    ros::NodeHandle nh_;
 
     Command_Data_t(){
       rcv_stamp = ros::Time(0);
       cmd_init = false;
+      debug_cmd_pub = nh_.advertise<nav_msgs::Odometry>("/debug_cmd", 10);
     };
 
     void feed(quadrotor_msgs::PositionCommandConstPtr pMsg){
@@ -247,6 +259,19 @@ class Command_Data_t {
         // printf("angle1: %f, angle2: %f, head_rate: %f \n, diff_time: %f",angle1,angle2,head_rate,diff_time);
       }
       cmd_init = true;
+
+      des_odom_msg.header.frame_id = "odom";
+      des_odom_msg.header.stamp = rcv_stamp;
+      des_odom_msg.pose.pose.position.x = msg.position.x;
+      des_odom_msg.pose.pose.position.y = msg.position.y;
+      des_odom_msg.pose.pose.position.z = msg.position.z;
+
+      Eigen::Quaterniond q = uav_utils::yaw_to_quaternion(msg.yaw);
+      des_odom_msg.pose.pose.orientation.w = q.w();
+      des_odom_msg.pose.pose.orientation.x = q.x();
+      des_odom_msg.pose.pose.orientation.y = q.y();
+      des_odom_msg.pose.pose.orientation.z = q.z();
+      debug_cmd_pub.publish(des_odom_msg);
     };
 };
 

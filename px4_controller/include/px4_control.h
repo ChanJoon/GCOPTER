@@ -153,7 +153,19 @@ void Control::process()
 			break;
 	}
 	
-	controller.publish_ctrl(u, now_time);
+	if (state == AUTO_HOVER){
+		//MEMO: Currently, use Controll_Output_t of 'process_hover_control' is unstable for hovering
+		// So just use position control
+		Desired_State_t des;
+		des.p = hover_pose.head<3>();
+		des.v = Eigen::Vector3d::Zero();
+		des.yaw = hover_pose(3);
+		des.a = Eigen::Vector3d::Zero();
+		des.jerk = Eigen::Vector3d::Zero();
+		publish_desire(des);
+	}
+	else if (state == CMD_CTRL)
+		controller.publish_ctrl(u, now_time);
 	hov_thr_kf.simple_update(u.des_v_real, odom_data.v );
 	// This line may not take effect according to param.hov.use_hov_percent_kf
 	param.config_full_thrust(hov_thr_kf.get_hov_thr());
@@ -235,7 +247,7 @@ void Control::align_with_imu(Controller_Output_t& u)
 void Control::set_hov_with_odom()
 {
 	hover_pose.head<3>() = odom_data.p;
-	hover_pose(2) = 4.0; // Temporailiy set to 4.0 m
+	hover_pose(2) = 3.0; // Temporailiy set to 3.0 m
 	hover_pose(3) = get_yaw_from_odom();
 }
 

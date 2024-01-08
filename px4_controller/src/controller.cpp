@@ -410,7 +410,6 @@ void Controller::update(
 	*step1
 	Compute reference inputs
 	*/
-	ROS_INFO("Desire state px: %f, py: %f, pz: %f, yaw: %f", des.p(0), des.p(1), des.p(2), des.yaw);
 	 // Compute reference inputs
 	std::string constraint_info("");
 	Eigen::Vector3d drag_accelerations = Eigen::Vector3d::Zero();
@@ -425,7 +424,6 @@ void Controller::update(
 		// Compute reference inputs as feed forward terms
 		reference_inputs = computeNominalReferenceInputs(des, odom);
 	}
-
 	/*
 	step2 get the pid error
 	*/
@@ -441,6 +439,7 @@ void Controller::update(
 		int_e_v.setZero();
 	}
 	double yaw_curr = get_yaw_from_quaternion(odom.q);
+	ROS_INFO("Desire state px: %f, py: %f, pz: %f, yaw: %f, head_rate: %f", des.p(0), des.p(1), des.p(2), des.yaw, des.head_rate);
 	ROS_INFO("Current state px: %f, py: %f, pz: %f, yaw: %f", odom.p(0), odom.p(1), odom.p(2), yaw_curr);
 	double	yaw_des = des.yaw;
 	Matrix3d wRc = rotz(yaw_curr);
@@ -497,11 +496,14 @@ void Controller::update(
 	// 	u.yaw_mode = Controller_Output_t::CTRL_YAW;
 	// 	u.yaw = des.yaw;
 	// }
-	const Eigen::Quaterniond desired_attitude = computeDesiredAttitude(F_des/param.mass, des.yaw,odom.q);
-	const Eigen::Vector3d feedback_bodyrates = computeFeedBackControlBodyrates(desired_attitude,odom.q);
+	const Eigen::Quaterniond desired_attitude = computeDesiredAttitude(F_des/param.mass, des.yaw, odom.q);
+	const Eigen::Vector3d feedback_bodyrates = computeFeedBackControlBodyrates(desired_attitude, odom.q);
 	u.roll_rate = reference_inputs.roll_rate+feedback_bodyrates.x();
 	u.pitch_rate = reference_inputs.pitch_rate+feedback_bodyrates.y();
 	u.yaw_rate = reference_inputs.yaw_rate+feedback_bodyrates.z();
+	
+	ROS_INFO_STREAM("Reference input thrust: " << reference_inputs.normalized_thrust << " roll_rate: " << reference_inputs.roll_rate << " yaw rate: " << reference_inputs.yaw_rate);
+	ROS_INFO_STREAM("feedback bodyrate x: " << feedback_bodyrates.x() << " y: " << feedback_bodyrates.y() << " z: " << feedback_bodyrates.z());
 
 	// double limit_rate = 6*3.14;
 	double limit_rate = 1.5*3.14; // https://github.com/HKUST-Aerial-Robotics/PredRecon/blob/master/Planner/Code/src/px4ctrl/src/controller.cpp
