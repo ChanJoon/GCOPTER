@@ -15,6 +15,7 @@
 #include <quadrotor_msgs/PositionCommand.h>
 #include <nav_msgs/Odometry.h>
 #include <mavros_msgs/AttitudeTarget.h>
+#include "px4_controller/Command.h"
 
 #include <cmath>
 #include <iostream>
@@ -90,6 +91,7 @@ private:
     ros::Subscriber targetSub;
     ros::Subscriber trajSub;
 		ros::Subscriber odomSub;
+		ros::ServiceServer targetSrv;
     ros::Publisher trajPub;
     ros::Publisher cmdPub;
     ros::Publisher attPub;
@@ -152,6 +154,7 @@ public:
         cmdPub = nh.advertise<quadrotor_msgs::PositionCommand>("position_command", 50);
         attPub = nh.advertise<mavros_msgs::AttitudeTarget>("/mavros/setpoint_raw/attitude", 50);
         // controlTimer = nh.createTimer(ros::Duration(0.01), &SimplePlanner::pubPositionCommand, this); // TODO: 이게 문제일 수 있다...
+				targetSrv = nh.advertiseService("target_srv", &SimplePlanner::targetSrvCallBack, this);
     }
 
 		inline void odomCallback(const nav_msgs::Odometry &msg)
@@ -411,7 +414,6 @@ public:
         }
         // #4. just publish
         cmdPub.publish(cmd);
-        ROS_INFO("Current state: %d, 0: INIT, 1: TRAJ, 2: HOVER", state);
     }
 
     inline void mapCallBack(const sensor_msgs::PointCloud2::ConstPtr &msg)
@@ -550,29 +552,72 @@ public:
     {
         if (mapInitialized)
         {
-            if (startGoal.size() >= 2)
-            {
-                startGoal.clear();
-            }
-            const double zGoal = config.mapBound[4] + config.dilateRadius +
-                                 fabs(msg->pose.orientation.z) *
-                                     (config.mapBound[5] - config.mapBound[4] - 2 * config.dilateRadius);
-            const Eigen::Vector3d goal(msg->pose.position.x, msg->pose.position.y, zGoal);
-            ROS_INFO("GOAL Selected! x: %f, y: %f, z: %f\n", goal[0], goal[1], goal[2]);
-            if (voxelMap.query(goal) == 0)
-            {
-                visualizer.visualizeStartGoal(goal, 0.5, startGoal.size());
-                startGoal.emplace_back(goal);
-            }
-            else
-            {
-                ROS_WARN("Infeasible Position Selected !!!\n");
-            }
+					startGoal.clear();
+					const double zGoal = config.mapBound[4] + config.dilateRadius +
+															 fabs(msg->pose.orientation.z) *
+															 (config.mapBound[5] - config.mapBound[4] - 2 * config.dilateRadius);
+					const Eigen::Vector3d current(odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z);
+					const Eigen::Vector3d goal(msg->pose.position.x, msg->pose.position.y, zGoal);
+					ROS_INFO("GOAL Selected! x: %f, y: %f, z: %f\n", goal[0], goal[1], goal[2]);
+					if (voxelMap.query(current) == 0)
+					{
+						visualizer.visualizeStartGoal(current, 0.5, startGoal.size());
+						startGoal.emplace_back(current);
+						if (voxelMap.query(goal) == 0)
+						{
+								visualizer.visualizeStartGoal(goal, 0.5, startGoal.size());
+								startGoal.emplace_back(goal);
+						}
+						else
+						{
+								ROS_WARN("Infeasible Position Selected !!!\n");
+						}
+					}
+					else
+					{
+							ROS_WARN("Infeasible Hover Position !!!\n");
+					}
 
-            plan();
+					plan();
         }
         return;
     }
+
+		inline bool targetSrvCallBack(px4_controller::Command::Request &req,
+																	px4_controller::Command::Response &res)
+		{
+			if (mapInitialized)
+			{
+					startGoal.clear();
+					const double zGoal = config.mapBound[4] + config.dilateRadius +
+																fabs(odom.pose.pose.orientation.z) *
+																		(config.mapBound[5] - config.mapBound[4] - 2 * config.dilateRadius);
+					const Eigen::Vector3d current(odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z);
+					const Eigen::Vector3d goal(req.x, req.y, zGoal);
+					ROS_INFO("GOAL Received! x: %f, y: %f, z: %f\n", goal[0], goal[1], goal[2]);
+					if (voxelMap.query(current) == 0)
+					{
+						visualizer.visualizeStartGoal(current, 0.5, startGoal.size());
+						startGoal.emplace_back(current);
+						if (voxelMap.query(goal) == 0)
+						{
+								visualizer.visualizeStartGoal(goal, 0.5, startGoal.size());
+								startGoal.emplace_back(goal);
+						}
+						else
+						{
+								ROS_WARN("Infeasible Position Received !!!\n");
+						}
+					}
+					else
+					{
+							ROS_WARN("Infeasible Hover Position !!!\n");
+					}
+
+					plan();
+			}
+			return true;
+		}
 
     inline void process()
     {

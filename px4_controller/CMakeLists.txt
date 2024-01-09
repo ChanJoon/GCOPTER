@@ -10,6 +10,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
+  message_generation
   sensor_msgs
   visualization_msgs
   quadrotor_msgs
@@ -18,6 +19,10 @@ find_package(catkin REQUIRED COMPONENTS
   mavros
   gcopter
 )
+add_service_files(FILES
+  Command.srv
+)
+generate_messages(DEPENDENCIES std_msgs)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 find_package(Eigen REQUIRED) # try to find manually installed eigen (Usually in /usr/local with provided FindEigen3.cmake)
@@ -26,7 +31,7 @@ find_package(ompl REQUIRED)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES Ctrl
-#  CATKIN_DEPENDS roscpp rospy
+ CATKIN_DEPENDS roscpp rospy message_runtime
 #  DEPENDS system_lib
 )
 
@@ -53,6 +58,12 @@ target_link_libraries(px4_control_node
 
 add_executable(simple_planning src/simple_planning.cpp)
 target_link_libraries(simple_planning
+  ${OMPL_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+
+add_executable(multi_points_planning src/multi_points_planning.cpp)
+target_link_libraries(multi_points_planning
   ${OMPL_LIBRARIES}
   ${catkin_LIBRARIES}
 )
