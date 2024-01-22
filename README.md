@@ -1,5 +1,21 @@
 # GCOPTER
 
+Based on **Example 1**, plan a global trajectory with GCOPTER and control Iris in PX4 simulation.
+
+```bash
+roslaunch px4_controller env.launch
+roslaunch px4_controller <>_planning.launch # simple or multi_points
+roslaunch px4_controller <>_controller.launch # position or geometric
+```
+
+*References*
+- [rpg_quadrotor_control](https://github.com/uzh-rpg/rpg_quadrotor_control)
+- [Fast-Racing](https://github.com/ZJU-FAST-Lab/Fast-Racing)
+- [mavros_controllers](https://github.com/Jaeyoung-Lim/mavros_controllers)
+
+---
+## Original README
+
 __GCOPTER__ is an efficient and versatile multicopter trajectory optimizer built upon a novel sparse trajectory representation named [__MINCO__](https://arxiv.org/pdf/2103.00190.pdf). __User-defined state-input constraints__ for dynamics involving [__nonlinear drag effects__](https://github.com/ZJU-FAST-Lab/GCOPTER/blob/main/misc/flatness.pdf) are supported.
 
 ## Updates
