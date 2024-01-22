@@ -11,18 +11,22 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   message_generation
+  dynamic_reconfigure
   sensor_msgs
   visualization_msgs
   quadrotor_msgs
   geometry_msgs
+  controller_msgs
   uav_utils
   mavros
   gcopter
 )
-add_service_files(FILES
-  Command.srv
-)
+add_service_files(DIRECTORY srv FILES Command.srv)
 generate_messages(DEPENDENCIES std_msgs)
+
+generate_dynamic_reconfigure_options(
+  config/GeometricController.cfg
+)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 find_package(Eigen REQUIRED) # try to find manually installed eigen (Usually in /usr/local with provided FindEigen3.cmake)
@@ -45,13 +49,13 @@ include_directories(
   include
 )
 
-add_executable(px4_control_node 
-	src/px4_control_node.cpp
+add_executable(position_controller_node 
+	src/position_controller_node.cpp
   src/controller.cpp
   src/hovthrkf.cpp
 )
-add_dependencies(px4_control_node quadrotor_msgs)
-target_link_libraries(px4_control_node
+add_dependencies(position_controller_node quadrotor_msgs)
+target_link_libraries(position_controller_node
   ${catkin_LIBRARIES}
 )
 
@@ -61,9 +65,21 @@ target_link_libraries(simple_planning
   ${OMPL_LIBRARIES}
   ${catkin_LIBRARIES}
 )
+add_dependencies(simple_planning px4_controller_generate_messages_cpp)
 
 add_executable(multi_points_planning src/multi_points_planning.cpp)
 target_link_libraries(multi_points_planning
   ${OMPL_LIBRARIES}
   ${catkin_LIBRARIES}
 )
+add_dependencies(multi_points_planning px4_controller_generate_messages_cpp)
+
+
+add_executable(geometric_controller_node
+  src/geometric_controller_node.cpp
+  src/geometric_controller.cpp 
+  src/nonlinear_attitude_control.cpp
+  src/nonlinear_geometric_control.cpp
+)
+add_dependencies(geometric_controller_node ${catkin_EXPORTED_TARGETS} px4_controller_gencfg)
+target_link_libraries(geometric_controller_node ${catkin_LIBRARIES})

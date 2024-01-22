@@ -1,0 +1,12 @@
+<launch>
+	<arg name="uavname" default="fpv" />
+
+	<node pkg="px4_controller" type="position_controller_node" name="px4_controller" output="screen">
+		<remap from="~state" to="/mavros/state" />
+		<remap from="~odom" to="/mavros/local_position/odom" />
+		<remap from="~cmd" to="/position_command" />
+		<remap from="~imu" to="/mavros/imu/data" />
+		<rosparam command="load" file="$(find px4_controller)/config/ctrl_param_$(arg uavname).yaml" />
+	</node>
+
+</launch>

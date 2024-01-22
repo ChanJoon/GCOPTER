@@ -15,6 +15,7 @@
 #include <quadrotor_msgs/PositionCommand.h>
 #include <nav_msgs/Odometry.h>
 #include <mavros_msgs/AttitudeTarget.h>
+#include "controller_msgs/FlatTarget.h"
 
 #include <cmath>
 #include <iostream>
@@ -92,10 +93,11 @@ private:
     ros::Subscriber mapSub;
     ros::Subscriber targetSub;
     ros::Subscriber trajSub;
-		ros::Subscriber odomSub;
+    ros::Subscriber odomSub;
     ros::Publisher trajPub;
     ros::Publisher cmdPub;
     ros::Publisher attPub;
+    ros::Publisher flatReferencePub;
     ros::Timer controlTimer;
 
     bool mapInitialized;
@@ -152,8 +154,12 @@ public:
 																 ros::TransportHints().tcpNoDelay());
         trajSub = nh.subscribe("trajectory", 2, &MultiPointsPlanner::rcvTrajectoryCallabck, this);
         trajPub = nh.advertise<quadrotor_msgs::PolynomialTrajectory>("trajectory", 50);
+        // Position controller (Fast-Racing)
         cmdPub = nh.advertise<quadrotor_msgs::PositionCommand>("position_command", 50);
         attPub = nh.advertise<mavros_msgs::AttitudeTarget>("/mavros/setpoint_raw/attitude", 50);
+
+        // Geometric controller (mavros_controllers)
+        flatReferencePub = nh.advertise<controller_msgs::FlatTarget>("reference/flatsetpoint", 1);
     }
 
 		inline void odomCallback(const nav_msgs::Odometry &msg)
@@ -190,6 +196,7 @@ public:
 						cmd.jerk.z = 0.0;
 						cmd.yaw = acos(-1)/2;	// == PI / 2
 						cmdPub.publish(cmd);
+                        pubflatrefState();
 
 						return;
 				}
@@ -292,6 +299,7 @@ public:
             _traj_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_IMPOSSIBLE;
         }
         else if(traj.action==quadrotor_msgs::PositionCommand::ACTION_STOP){
+            // MEMO: https://github.com/ZJU-FAST-Lab/Fast-tracker/blob/main/src/plan_manage/src/plan_manage.cpp
             ROS_WARN("Emergency!!!");
             state = HOVER;
             _traj_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_COMPLETED;
@@ -413,6 +421,25 @@ public:
         }
         // #4. just publish
         cmdPub.publish(cmd);
+        pubflatrefState();
+    }
+
+    inline void pubflatrefState() {
+        controller_msgs::FlatTarget msg;
+
+        msg.header.stamp = odom.header.stamp;
+        msg.header.frame_id = "/world_enu";
+        msg.type_mask = 2;      // pubreference_type_;
+        msg.position.x = cmd.position.x;
+        msg.position.y = cmd.position.y;
+        msg.position.z = cmd.position.z;
+        msg.velocity.x = cmd.velocity.x;
+        msg.velocity.y = cmd.velocity.y;
+        msg.velocity.z = cmd.velocity.z;
+        msg.acceleration.x = cmd.acceleration.x;
+        msg.acceleration.y = cmd.acceleration.y;
+        msg.acceleration.z = cmd.acceleration.z;
+        flatReferencePub.publish(msg);
     }
 
     inline void mapCallBack(const sensor_msgs::PointCloud2::ConstPtr &msg)
@@ -625,53 +652,6 @@ public:
         }
         return;
 		}
-
-    inline void process()
-    {
-        Eigen::VectorXd physicalParams(6);
-        physicalParams(0) = config.vehicleMass;
-        physicalParams(1) = config.gravAcc;
-        physicalParams(2) = config.horizDrag;
-        physicalParams(3) = config.vertDrag;
-        physicalParams(4) = config.parasDrag;
-        physicalParams(5) = config.speedEps;
-
-        flatness::FlatnessMap flatmap;
-        flatmap.reset(physicalParams(0), physicalParams(1), physicalParams(2),
-                      physicalParams(3), physicalParams(4), physicalParams(5));
-
-        if (traj.getPieceNum() > 0)
-        {
-            const double delta = ros::Time::now().toSec() - trajStamp;
-            if (delta > 0.0 && delta < traj.getTotalDuration())
-            {
-                double thr;
-                Eigen::Vector4d quat;
-                Eigen::Vector3d omg;
-
-                flatmap.forward(traj.getVel(delta),
-                                traj.getAcc(delta),
-                                traj.getJer(delta),
-                                0.0, 0.0,
-                                thr, quat, omg);
-                double speed = traj.getVel(delta).norm();
-                double bodyratemag = omg.norm();
-                double tiltangle = acos(1.0 - 2.0 * (quat(1) * quat(1) + quat(2) * quat(2)));
-                std_msgs::Float64 speedMsg, thrMsg, tiltMsg, bdrMsg;
-                speedMsg.data = speed;
-                thrMsg.data = thr;
-                tiltMsg.data = tiltangle;
-                bdrMsg.data = bodyratemag;
-                visualizer.speedPub.publish(speedMsg);
-                visualizer.thrPub.publish(thrMsg);
-                visualizer.tiltPub.publish(tiltMsg);
-                visualizer.bdrPub.publish(bdrMsg);
-
-                visualizer.visualizeSphere(traj.getPos(delta),
-                                           config.dilateRadius);
-            }
-        }
-    }
 };
 
 int main(int argc, char **argv)
@@ -684,7 +664,6 @@ int main(int argc, char **argv)
     ros::Rate lr(1000);
     while (ros::ok())
     {
-        multi_points_planner.process();
         ros::spinOnce();
         lr.sleep();
     }
