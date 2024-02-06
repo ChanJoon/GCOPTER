@@ -63,8 +63,13 @@
 		<arg name="respawn_mavros" default="$(arg respawn_mavros)" />
   </include>	
 
-   <node name="rviz" pkg="rviz" type="rviz" output="screen"
+	<node name="rviz" pkg="rviz" type="rviz" output="screen"
     args="-d $(find px4_controller)/config/race_track_planning.rviz"> 
   </node>	
+
 	<node pkg="tf" type="static_transform_publisher" name="odom_to_map" args="0 0 0 0 0 0 odom map 10" />
+
+	<param name="file_name" type="str" value="$(find px4_controller)/gt_pcd/drone_race_track_gate_only.pcd" />
+	<node pkg="px4_controller" name="pcd_to_pointcloud" type="pcd_to_pointcloud" output="screen" >
+	</node>
 </launch>

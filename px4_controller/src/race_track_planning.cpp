@@ -27,12 +27,12 @@
 #include <vector>
 #include <algorithm>
 #include <utility>
+#include <xmlrpcpp/XmlRpcValue.h>
 
 struct Config
 {
-    double numPoint;
+    XmlRpc::XmlRpcValue waypoints;
     std::string mapTopic;
-    std::string targetTopic;
     std::string odomTopic;
     double dilateRadius;
     double voxelWidth;
@@ -57,9 +57,8 @@ struct Config
 
     Config(const ros::NodeHandle &nh_priv)
     {
-        nh_priv.getParam("NumWaypoint", numPoint);
+        nh_priv.getParam("WayPoints", waypoints);
         nh_priv.getParam("MapTopic", mapTopic);
-        nh_priv.getParam("TargetTopic", targetTopic);
         nh_priv.getParam("OdomTopic", odomTopic);
         nh_priv.getParam("DilateRadius", dilateRadius);
         nh_priv.getParam("VoxelWidth", voxelWidth);
@@ -84,7 +83,7 @@ struct Config
     }
 };
 
-class MultiPointsPlanner
+class TrackPlanner
 {
 private:
     Config config;
@@ -96,11 +95,13 @@ private:
     ros::Subscriber odomSub;
     ros::Publisher trajPub;
     ros::Publisher cmdPub;
+    ros::Publisher desOdomPub;
     ros::Publisher attPub;
     ros::Publisher flatReferencePub;
     ros::Timer controlTimer;
 
     bool mapInitialized;
+    bool goalInitialized = false;
     bool odomInitialized = false;
     voxel_map::VoxelMap voxelMap;
     Visualizer visualizer;
@@ -130,7 +131,7 @@ private:
     enum ServerState{INIT = 0, TRAJ, HOVER} state = INIT;;
 
 public:
-    MultiPointsPlanner(const Config &conf,
+    TrackPlanner(const Config &conf,
                   ros::NodeHandle &nh_)
         : config(conf),
           nh(nh_),
@@ -145,15 +146,14 @@ public:
 
         voxelMap = voxel_map::VoxelMap(xyz, offset, config.voxelWidth);
 
-        mapSub = nh.subscribe(config.mapTopic, 1, &MultiPointsPlanner::mapCallBack, this,
+        mapSub = nh.subscribe(config.mapTopic, 1, &TrackPlanner::mapCallBack, this,
                               ros::TransportHints().tcpNoDelay());
 
-        targetSub = nh.subscribe(config.targetTopic, 1, &MultiPointsPlanner::targetCallBack, this,
-                                 ros::TransportHints().tcpNoDelay());
-				odomSub = nh.subscribe(config.odomTopic, 1, &MultiPointsPlanner::odomCallback, this,
+        odomSub = nh.subscribe(config.odomTopic, 1, &TrackPlanner::odomCallback, this,
 																 ros::TransportHints().tcpNoDelay());
-        trajSub = nh.subscribe("trajectory", 2, &MultiPointsPlanner::rcvTrajectoryCallabck, this);
+        trajSub = nh.subscribe("trajectory", 2, &TrackPlanner::rcvTrajectoryCallabck, this);
         trajPub = nh.advertise<quadrotor_msgs::PolynomialTrajectory>("trajectory", 50);
+        desOdomPub = nh.advertise<nav_msgs::Odometry>("desired_state", 50);
         // Position controller (Fast-Racing)
         cmdPub = nh.advertise<quadrotor_msgs::PositionCommand>("position_command", 50);
         attPub = nh.advertise<mavros_msgs::AttitudeTarget>("/mavros/setpoint_raw/attitude", 50);
@@ -162,58 +162,101 @@ public:
         flatReferencePub = nh.advertise<controller_msgs::FlatTarget>("reference/flatsetpoint", 1);
     }
 
-		inline void odomCallback(const nav_msgs::Odometry &msg)
-		{
-			if (!odomInitialized)
-			{
-				init_odom = msg;
-				odomInitialized = true;
-			}
-			else
-			{
-				odom = msg;
-				if(state == INIT )
-				{
-						cmd.position.x = init_odom.pose.pose.position.x;
-						cmd.position.y = init_odom.pose.pose.position.y;
-						cmd.position.z = 3.0;		// Temporailiy set to 3.0 m
-						
-						cmd.header.stamp = odom.header.stamp;
-						cmd.header.frame_id = "/world_enu";
-						//cmd.trajectory_flag = _traj_flag;
-						cmd.trajectory_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_READY;
+    inline void setWaypoints()
+    {
+        if (mapInitialized)
+        {
+            startGoal.clear();
+            if (startGoal.size() == 0)
+            {
+                const Eigen::Vector3d current(odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z);
+                if (voxelMap.query(current) == 0)
+                {
+                    visualizer.visualizeStartGoal(current, 0.5, startGoal.size());
+                    startGoal.emplace_back(current);
+                }
+                else
+                {
+                    ROS_WARN("Infeasible Hover Position !!!\n");
+                }                
+            }
 
-						cmd.velocity.x = 0.0;
-						cmd.velocity.y = 0.0;
-						cmd.velocity.z = 0.0;
-						
-						cmd.acceleration.x = 0.0;
-						cmd.acceleration.y = 0.0;
-						cmd.acceleration.z = 0.0;
+            for (int i = 0; i < config.waypoints.size(); ++i)
+            {
+                Eigen::Vector3d goal;
+                goal[0] = static_cast<double>(config.waypoints[i]["x"]);
+                goal[1] = static_cast<double>(config.waypoints[i]["y"]);
+                goal[2] = static_cast<double>(config.waypoints[i]["z"]);
+                if (voxelMap.query(goal) == 0)
+                {
+                    visualizer.visualizeStartGoal(goal, 0.5, startGoal.size());
+                    startGoal.emplace_back(goal);
+                }
+                else
+                {
+                    ROS_WARN("Infeasible Position Selected !!!\n");
+                }
+            }
+            ROS_INFO("Selecting feasible waypoints is DONE!!\n Start Planning...");
+            goalInitialized = true;
+            plan();
+        }
+        return;
+    }    
 
-						cmd.jerk.x = 0.0;
-						cmd.jerk.y = 0.0;
-						cmd.jerk.z = 0.0;
-						cmd.yaw = acos(-1)/2;	// == PI / 2
-						cmdPub.publish(cmd);
-                        pubflatrefState();
+    inline void odomCallback(const nav_msgs::Odometry &msg)
+    {
+        if (!odomInitialized)
+        {
+            init_odom = msg;
+            odomInitialized = true;
+        }
+        else
+        {
+            odom = msg;
+            if(state == INIT )
+            {
+                cmd.position.x = init_odom.pose.pose.position.x;
+                cmd.position.y = init_odom.pose.pose.position.y;
+                cmd.position.z = 3.0;		// Temporailiy set to 3.0 m
+                
+                cmd.header.stamp = odom.header.stamp;
+                cmd.header.frame_id = "/world_enu";
+                //cmd.trajectory_flag = _traj_flag;
+                cmd.trajectory_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_READY;
 
-						return;
-				}
+                cmd.velocity.x = 0.0;
+                cmd.velocity.y = 0.0;
+                cmd.velocity.z = 0.0;
+                
+                cmd.acceleration.x = 0.0;
+                cmd.acceleration.y = 0.0;
+                cmd.acceleration.z = 0.0;
 
-				// change the order between #2 and #3. zxzxzxzx
-				
-				// #2. try to calculate the new state
-				if (state == TRAJ && ( (odom.header.stamp - _start_time).toSec() / mag_coeff > (_final_time - _start_time).toSec() ) )
-				{
-						state = HOVER;
-						_traj_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_COMPLETED;
-				}
+                cmd.jerk.x = 0.0;
+                cmd.jerk.y = 0.0;
+                cmd.jerk.z = 0.0;
+                cmd.yaw = acos(-1)/2;	// == PI / 2
+                cmdPub.publish(cmd);
+                pubflatrefState();
+                pubDesiredState();
 
-				// #3. try to publish command
-				pubPositionCommand();
-			}
-		}
+                return;
+            }
+
+            // change the order between #2 and #3. zxzxzxzx
+            
+            // #2. try to calculate the new state
+            if (state == TRAJ && ( (odom.header.stamp - _start_time).toSec() / mag_coeff > (_final_time - _start_time).toSec() ) )
+            {
+                state = HOVER;
+                _traj_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_COMPLETED;
+            }
+
+            // #3. try to publish command
+            pubPositionCommand();
+        }
+    }
 
     inline quadrotor_msgs::PolynomialTrajectory traj2msg(Trajectory<5> traj)
     {
@@ -422,13 +465,15 @@ public:
         // #4. just publish
         cmdPub.publish(cmd);
         pubflatrefState();
+        pubDesiredState();
     }
 
-    inline void pubflatrefState() {
+    inline void pubflatrefState()
+    {
         controller_msgs::FlatTarget msg;
 
         msg.header.stamp = odom.header.stamp;
-        msg.header.frame_id = "/world_enu";
+        msg.header.frame_id = "map";
         msg.type_mask = 2;      // pubreference_type_;
         msg.position.x = cmd.position.x;
         msg.position.y = cmd.position.y;
@@ -440,6 +485,27 @@ public:
         msg.acceleration.y = cmd.acceleration.y;
         msg.acceleration.z = cmd.acceleration.z;
         flatReferencePub.publish(msg);
+    }
+    
+    inline void pubDesiredState()
+    {
+        nav_msgs::Odometry msg;
+
+        msg.header.stamp = cmd.header.stamp;
+        msg.header.frame_id = "map";
+        msg.pose.pose.position.x = cmd.position.x;
+        msg.pose.pose.position.y = cmd.position.y;
+        msg.pose.pose.position.z = cmd.position.z;
+
+        Eigen::Vector3d rpy(0, 0, cmd.yaw);
+        Eigen::Quaterniond q = Eigen::Quaterniond(Eigen::AngleAxisd(rpy.z(), Eigen::Vector3d::UnitZ()) *
+                               Eigen::AngleAxisd(rpy.y(), Eigen::Vector3d::UnitY()) *
+                               Eigen::AngleAxisd(rpy.x(), Eigen::Vector3d::UnitX()));
+        msg.pose.pose.orientation.w = q.w();
+        msg.pose.pose.orientation.x = q.x();
+        msg.pose.pose.orientation.y = q.y();
+        msg.pose.pose.orientation.z = q.z();
+        desOdomPub.publish(msg);
     }
 
     inline void mapCallBack(const sensor_msgs::PointCloud2::ConstPtr &msg)
@@ -467,165 +533,133 @@ public:
             voxelMap.dilate(std::ceil(config.dilateRadius / voxelMap.getScale()));
 
             mapInitialized = true;
-						ROS_INFO("Map initialized!");
+            ROS_INFO("Map initialized!");
         }
+        if (!goalInitialized) setWaypoints();
     }
 
     inline void plan()
     {
-        if (startGoal.size() - 1 == config.numPoint) // startGoal.size() == current + goals
+        std::vector<Eigen::Vector3d> routes;
+        std::vector<Eigen::MatrixX4d> hPolys;
+        std::vector<Eigen::Vector3d> pc;
+        voxelMap.getSurf(pc);
+
+        std::chrono::high_resolution_clock::time_point tic = std::chrono::high_resolution_clock::now();
+        for (unsigned int i = 0; i < startGoal.size() - 1; i++)
         {
-            std::vector<Eigen::Vector3d> routes;
-            for (unsigned int i = 0; i < startGoal.size() - 1; i++)
+            std::vector<Eigen::Vector3d> route;
+            sfc_gen::planPath<voxel_map::VoxelMap>(startGoal[i],
+                                                    startGoal[i+1],
+                                                    voxelMap.getOrigin(),
+                                                    voxelMap.getCorner(),
+                                                    &voxelMap, 0.01,
+                                                    route);
+            routes.insert(routes.end(), route.begin(), route.end());
+
+            std::vector<Eigen::MatrixX4d> htemp;
+            sfc_gen::convexCover(route,
+                                pc,
+                                voxelMap.getOrigin(),
+                                voxelMap.getCorner(),
+                                7.0,
+                                3.0,
+                                htemp);
+            sfc_gen::shortCut(htemp);
+            hPolys.insert(hPolys.end(), htemp.begin(), htemp.end());
+        }
+        std::chrono::high_resolution_clock::time_point toc = std::chrono::high_resolution_clock::now();
+        double compTime = std::chrono::duration_cast<std::chrono::microseconds>(toc - tic).count() * 1.0e-3;
+        std::cout << "Safe fight corridor time usage: " << compTime << " ms" << std::endl;
+
+        if (routes.size() > 1)
+        {
+            visualizer.visualizePolytope(hPolys);
+
+            gcopter::GCOPTER_PolytopeSFC gcopter;
+
+            // magnitudeBounds = [v_max, omg_max, theta_max, thrust_min, thrust_max]^T
+            // penaltyWeights = [pos_weight, vel_weight, omg_weight, theta_weight, thrust_weight]^T
+            // physicalParams = [vehicle_mass, gravitational_acceleration, horitonral_drag_coeff,
+            //                   vertical_drag_coeff, parasitic_drag_coeff, speed_smooth_factor]^T
+            // initialize some constraint parameters
+            Eigen::VectorXd magnitudeBounds(5);
+            Eigen::VectorXd penaltyWeights(5);
+            Eigen::VectorXd physicalParams(6);
+            magnitudeBounds(0) = config.maxVelMag;
+            magnitudeBounds(1) = config.maxBdrMag;
+            magnitudeBounds(2) = config.maxTiltAngle;
+            magnitudeBounds(3) = config.minThrust;
+            magnitudeBounds(4) = config.maxThrust;
+            penaltyWeights(0) = (config.chiVec)[0];
+            penaltyWeights(1) = (config.chiVec)[1];
+            penaltyWeights(2) = (config.chiVec)[2];
+            penaltyWeights(3) = (config.chiVec)[3];
+            penaltyWeights(4) = (config.chiVec)[4];
+            physicalParams(0) = config.vehicleMass;
+            physicalParams(1) = config.gravAcc;
+            physicalParams(2) = config.horizDrag;
+            physicalParams(3) = config.vertDrag;
+            physicalParams(4) = config.parasDrag;
+            physicalParams(5) = config.speedEps;
+            const int quadratureRes = config.integralIntervs;
+
+            traj.clear();
+
+            Eigen::Matrix3d iniState;
+            Eigen::Matrix3d finState;
+            iniState << routes.front(), Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero();
+            finState << routes.back(), Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero();
+
+            ROS_INFO("Begin to optimize the traj~");
+            std::chrono::high_resolution_clock::time_point tic = std::chrono::high_resolution_clock::now();
+            if (!gcopter.setup(config.weightT,
+                               iniState, finState,
+                               hPolys, INFINITY,
+                               config.smoothingEps,
+                               quadratureRes,
+                               magnitudeBounds,
+                               penaltyWeights,
+                               physicalParams))
             {
-                std::vector<Eigen::Vector3d> route;
-                sfc_gen::planPath<voxel_map::VoxelMap>(startGoal[i],
-                                                        startGoal[i+1],
-                                                        voxelMap.getOrigin(),
-                                                        voxelMap.getCorner(),
-                                                        &voxelMap, 0.01,
-                                                        route);
-                routes.insert(routes.end(), route.begin(), route.end());
+                return;
             }
-            std::vector<Eigen::MatrixX4d> hPolys;
-            std::vector<Eigen::Vector3d> pc;
-            voxelMap.getSurf(pc);
+            std::chrono::high_resolution_clock::time_point toc = std::chrono::high_resolution_clock::now();
+            double compTime = std::chrono::duration_cast<std::chrono::microseconds>(toc - tic).count() * 1.0e-3;
+            std::cout << "GCOPTER SETUP DONE! Setup time usage: " << compTime << " ms\n" << std::endl;
 
-            sfc_gen::convexCover(routes,
-                                 pc,
-                                 voxelMap.getOrigin(),
-                                 voxelMap.getCorner(),
-                                 7.0,
-                                 3.0,
-                                 hPolys);
-            sfc_gen::shortCut(hPolys);
-
-            if (routes.size() > 1)
+            if (std::isinf(gcopter.optimize(traj, config.relCostTol)))
             {
-                visualizer.visualizePolytope(hPolys);
-
-                gcopter::GCOPTER_PolytopeSFC gcopter;
-
-                // magnitudeBounds = [v_max, omg_max, theta_max, thrust_min, thrust_max]^T
-                // penaltyWeights = [pos_weight, vel_weight, omg_weight, theta_weight, thrust_weight]^T
-                // physicalParams = [vehicle_mass, gravitational_acceleration, horitonral_drag_coeff,
-                //                   vertical_drag_coeff, parasitic_drag_coeff, speed_smooth_factor]^T
-                // initialize some constraint parameters
-                Eigen::VectorXd magnitudeBounds(5);
-                Eigen::VectorXd penaltyWeights(5);
-                Eigen::VectorXd physicalParams(6);
-                magnitudeBounds(0) = config.maxVelMag;
-                magnitudeBounds(1) = config.maxBdrMag;
-                magnitudeBounds(2) = config.maxTiltAngle;
-                magnitudeBounds(3) = config.minThrust;
-                magnitudeBounds(4) = config.maxThrust;
-                penaltyWeights(0) = (config.chiVec)[0];
-                penaltyWeights(1) = (config.chiVec)[1];
-                penaltyWeights(2) = (config.chiVec)[2];
-                penaltyWeights(3) = (config.chiVec)[3];
-                penaltyWeights(4) = (config.chiVec)[4];
-                physicalParams(0) = config.vehicleMass;
-                physicalParams(1) = config.gravAcc;
-                physicalParams(2) = config.horizDrag;
-                physicalParams(3) = config.vertDrag;
-                physicalParams(4) = config.parasDrag;
-                physicalParams(5) = config.speedEps;
-                const int quadratureRes = config.integralIntervs;
-
-                traj.clear();
-
-                std::chrono::high_resolution_clock::time_point tic = std::chrono::high_resolution_clock::now();
-                Eigen::Matrix3d iniState;
-                Eigen::Matrix3d finState;
-                iniState << routes.front(), Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero();
-                finState << routes.back(), Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero();
-
-                ROS_INFO("Begin to optimize the traj~");
-                if (!gcopter.setup(config.weightT,
-                                   iniState, finState,
-                                   hPolys, INFINITY,
-                                   config.smoothingEps,
-                                   quadratureRes,
-                                   magnitudeBounds,
-                                   penaltyWeights,
-                                   physicalParams))
-                {
-                    return;
-                }
-
-                if (std::isinf(gcopter.optimize(traj, config.relCostTol)))
-                {
-                    return;
-                }
-                std::chrono::high_resolution_clock::time_point toc = std::chrono::high_resolution_clock::now();
-                double compTime = std::chrono::duration_cast<std::chrono::microseconds>(toc - tic).count() * 1.0e-3;
-
-                printf("finished!!!\n");
-                std::cout << "Optimization time usage: " << compTime << " ms" << std::endl;
-                std::cout << "Maximum Vel: " << traj.getMaxVelRate() << std::endl;
-                std::cout << "Maximum Acc: " << traj.getMaxAccRate() << std::endl;
-                std::cout << "Total Duation: " << traj.getTotalDuration() << std::endl;
-
-                if (traj.getPieceNum() > 0)
-                {
-                    trajStamp = ros::Time::now().toSec();
-                    visualizer.visualize(traj, routes);
-                }
-                traj_msg = traj2msg(traj);
-                trajPub.publish(traj_msg);
+                return;
             }
+            std::chrono::high_resolution_clock::time_point tac = std::chrono::high_resolution_clock::now();
+            compTime = std::chrono::duration_cast<std::chrono::microseconds>(tac - toc).count() * 1.0e-3;
+            std::cout << "GCOPTER OPTIMIZATION DONE! Optimization time usage: " << compTime << " ms\n" << std::endl;
+
+            compTime = std::chrono::duration_cast<std::chrono::microseconds>(tac - tic).count() * 1.0e-3;
+            printf("finished!!!\n");
+            std::cout << "Total time usage: " << compTime << " ms" << std::endl;
+            std::cout << "Maximum Vel: " << traj.getMaxVelRate() << std::endl;
+            std::cout << "Maximum Acc: " << traj.getMaxAccRate() << std::endl;
+            std::cout << "Total Duation: " << traj.getTotalDuration() << std::endl;
+
+            if (traj.getPieceNum() > 0)
+            {
+                trajStamp = ros::Time::now().toSec();
+                visualizer.visualize(traj, routes);
+            }
+            traj_msg = traj2msg(traj);
+            trajPub.publish(traj_msg);
         }
     }
-
-    inline void targetCallBack(const geometry_msgs::PoseStamped::ConstPtr &msg)
-    {
-        if (mapInitialized)
-        {
-            if (startGoal.size() - 1 >= config.numPoint)
-            {
-                startGoal.clear();
-            }
-            if (startGoal.size() == 0)
-            {
-                const Eigen::Vector3d current(odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z);
-                if (voxelMap.query(current) == 0)
-                {
-                    visualizer.visualizeStartGoal(current, 0.5, startGoal.size());
-                    startGoal.emplace_back(current);
-                }
-                else
-                {
-                    ROS_WARN("Infeasible Hover Position !!!\n");
-                }
-            }
-            const double zGoal = config.mapBound[4] + config.dilateRadius +
-                                                        fabs(msg->pose.orientation.z) *
-                                                        (config.mapBound[5] - config.mapBound[4] - 2 * config.dilateRadius);
-            const Eigen::Vector3d goal(msg->pose.position.x, msg->pose.position.y, zGoal);
-            ROS_INFO("GOAL Selected! x: %f, y: %f, z: %f\n", goal[0], goal[1], goal[2]);
-            if (voxelMap.query(goal) == 0)
-            {
-                visualizer.visualizeStartGoal(goal, 0.5, startGoal.size());
-                startGoal.emplace_back(goal);
-                ROS_INFO("Waypoint # %ld Selected !!!\n", startGoal.size() - 1);
-            }
-            else
-            {
-                ROS_WARN("Infeasible Position Selected !!!\n");
-            }
-
-            plan();
-        }
-        return;
-		}
 };
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "multi_points_planning_node");
+    ros::init(argc, argv, "race_track_planning_node");
     ros::NodeHandle nh_;
 
-    MultiPointsPlanner multi_points_planner(Config(ros::NodeHandle("~")), nh_);
+    TrackPlanner race_track_planner(Config(ros::NodeHandle("~")), nh_);
 
     ros::Rate lr(1000);
     while (ros::ok())

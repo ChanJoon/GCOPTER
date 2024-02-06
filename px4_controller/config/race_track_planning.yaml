@@ -9,7 +9,7 @@ WayPoints:
                             - {x: 2.0, y: 5.3, z: 1.2}
                             # - {x: 0.0, y: 0.0, z: 3.0}
 
-MapTopic:                   '/cloud_pcd'
+MapTopic:                   '/gt_map'
 
 OdomTopic:                  '/mavros/local_position/odom'
 

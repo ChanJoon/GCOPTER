@@ -31,6 +31,7 @@ generate_dynamic_reconfigure_options(
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 find_package(Eigen REQUIRED) # try to find manually installed eigen (Usually in /usr/local with provided FindEigen3.cmake)
 find_package(ompl REQUIRED)
+find_package(PCL REQUIRED)
 
 catkin_package(
 #  INCLUDE_DIRS include
@@ -43,6 +44,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${EIGEN_INCLUDE_DIRS}
   ${OMPL_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
   # ${gcopter_INCLUDE_DIRS}
   "../gcopter/include"        # For #include "misc/visualizer.hpp", Or copy 'misc' folder in this package.
   include/${PROJECT_NAME}
@@ -74,6 +76,13 @@ target_link_libraries(multi_points_planning
 )
 add_dependencies(multi_points_planning px4_controller_generate_messages_cpp)
 
+add_executable(race_track_planning src/race_track_planning.cpp)
+target_link_libraries(race_track_planning
+  ${OMPL_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(race_track_planning px4_controller_generate_messages_cpp)
+
 
 add_executable(geometric_controller_node
   src/geometric_controller_node.cpp
@@ -83,3 +92,6 @@ add_executable(geometric_controller_node
 )
 add_dependencies(geometric_controller_node ${catkin_EXPORTED_TARGETS} px4_controller_gencfg)
 target_link_libraries(geometric_controller_node ${catkin_LIBRARIES})
+
+add_executable(pcd_to_pointcloud src/utils/pcd_to_pointcloud.cpp)
+target_link_libraries(pcd_to_pointcloud ${catkin_LIBRARIES} ${PCL_LIBRARIES})
