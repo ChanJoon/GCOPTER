@@ -4,18 +4,9 @@ Based on **Example 1**, plan a global trajectory with GCOPTER and control Iris i
 
 ## How to use
 
-### #1 Trajectory Planning in mockamap
+### #1 Trajectory Planning in race track
 
-Like as **Example 1**, plan your trajectory with `2D Nav Goal` in rviz or calling [Command.srv](./px4_controller/srv/Command.srv). In `multi_points_planning`, you can configure the number of waypoint in the YAML and select them in rviz.
-
-```bash
-roslaunch px4_controller mockamap_env.launch
-roslaunch px4_controller multi_points_planning.launch # simple or multi_points
-roslaunch px4_controller position_controller.launch # position or geometric
-```
-### #2 Trajectory Planning in race track
-
-In **#1**, there are no obstacles in Gazebo; it only features a virtual map in rviz for trajectory planning.
+In provided **Example 1**, there are no obstacles in Gazebo; it only features a virtual map in rviz for trajectory planning.
 
 This example has a race track and [corresponding ground-truth pointcloud map](https://github.com/engcang/voxblox_ground_truth). So you can check whether planned trajectory is actually feasible for avoiding obstacles in Gazebo.
 
