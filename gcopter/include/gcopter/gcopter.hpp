@@ -82,6 +82,8 @@ namespace gcopter
         Eigen::VectorXd penaltyWt;
         Eigen::VectorXd physicalPm;
         double allocSpeed;
+        int quadModel;
+        Eigen::Vector3d ellipsoidParams;
 
         lbfgs::lbfgs_parameter_t lbfgs_params;
 
@@ -439,6 +441,10 @@ namespace gcopter
                         else if(model == static_cast<int>(Model::POLYHEDRON)) {
                             violaPos = outerNormal.dot(pos) + hPolys[L](k, 3);
                         }
+                        else {
+                            std::cerr << "Model not supported!" << std::endl;
+                            return;
+                        }
                         if (smoothedL1(violaPos, smoothFactor, violaPosPena, violaPosPenaD))
                         {
                             gradPos += weightPos * violaPosPenaD * outerNormal;
@@ -523,7 +529,7 @@ namespace gcopter
                                     obj.smoothEps, obj.integralRes,
                                     obj.magnitudeBd, obj.penaltyWt, obj.flatmap,
                                     cost, obj.partialGradByTimes, obj.partialGradByCoeffs,
-                                    0, Eigen::Vector3d::Zero()); // TODO: Add model and ellipsoid
+                                    obj.quadModel, obj.ellipsoidParams); // TODO: Add model and ellipsoid
 
             obj.minco.propogateGrad(obj.partialGradByCoeffs, obj.partialGradByTimes,
                                     obj.gradByPoints, obj.gradByTimes);
@@ -762,7 +768,9 @@ namespace gcopter
                           const int &integralResolution,
                           const Eigen::VectorXd &magnitudeBounds,
                           const Eigen::VectorXd &penaltyWeights,
-                          const Eigen::VectorXd &physicalParams)
+                          const Eigen::VectorXd &physicalParams,
+                          const int &model, //MEMO 0: sphere, 1: cuboid, 2: ellipsoid, 3: polyhedron
+                          const Eigen::Vector3d &ellipsoid)
         {
             rho = timeWeight;
             headPVA = initialPVA;
@@ -787,6 +795,8 @@ namespace gcopter
             penaltyWt = penaltyWeights;
             physicalPm = physicalParams;
             allocSpeed = magnitudeBd(0) * 3.0;
+            quadModel = model;
+            ellipsoidParams = ellipsoid;
 
             getShortestPath(headPVA.col(0), tailPVA.col(0),
                             vPolytopes, smoothEps, shortPath);

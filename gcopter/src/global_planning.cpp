@@ -210,7 +210,8 @@ public:
                                    quadratureRes,
                                    magnitudeBounds,
                                    penaltyWeights,
-                                   physicalParams))
+                                   physicalParams,
+                                   0, Eigen::Vector3d::Zero()))
                 {
                     return;
                 }
