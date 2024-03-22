@@ -48,6 +48,13 @@ namespace gcopter
         typedef std::vector<PolyhedronH> PolyhedraH;
 
     private:
+        enum class Model
+        {
+            SPHERE,
+            CUBOID,
+            ELLIPSOID,
+            POLYHEDRON
+        };
         minco::MINCO_S3NU minco;
         flatness::FlatnessMap flatmap;
 
@@ -334,7 +341,9 @@ namespace gcopter
                                                    flatness::FlatnessMap &flatMap,
                                                    double &cost,
                                                    Eigen::VectorXd &gradT,
-                                                   Eigen::MatrixX3d &gradC)
+                                                   Eigen::MatrixX3d &gradC,
+                                                   const int &model, //MEMO 0: sphere, 1: cuboid, 2: ellipsoid, 3: polyhedron
+                                                   const Eigen::Vector3d &ellipsoid)
         {
             const double velSqrMax = magnitudeBounds(0) * magnitudeBounds(0);
             const double omgSqrMax = magnitudeBounds(1) * magnitudeBounds(1);
@@ -364,6 +373,8 @@ namespace gcopter
             Eigen::Matrix<double, 6, 1> beta0, beta1, beta2, beta3, beta4;
             Eigen::Vector3d outerNormal;
             int K, L;
+            double eNorm;
+            Eigen::Vector3d eNormGd;
             double violaPos, violaVel, violaOmg, violaTheta, violaThrust;
             double violaPosPenaD, violaVelPenaD, violaOmgPenaD, violaThetaPenaD, violaThrustPenaD;
             double violaPosPena, violaVelPena, violaOmgPena, violaThetaPena, violaThrustPena;
@@ -394,11 +405,12 @@ namespace gcopter
                     sna = c.transpose() * beta4;
 
                     flatMap.forward(vel, acc, jer, 0.0, 0.0, thr, quat, omg);
+                    Eigen::Matrix3d rotate = Eigen::Quaterniond(quat[0], quat[1], quat[2], quat[3]).toRotationMatrix();
 
                     violaVel = vel.squaredNorm() - velSqrMax;
                     violaOmg = omg.squaredNorm() - omgSqrMax;
                     cos_theta = 1.0 - 2.0 * (quat(1) * quat(1) + quat(2) * quat(2));
-                    violaTheta = acos(cos_theta) - thetaMax;
+                    violaTheta = acos(cos_theta) - thetaMax; // acos(cost_theta) - maxTiltAngle
                     violaThrust = (thr - thrustMean) * (thr - thrustMean) - thrustSqrRadi;
 
                     gradThr = 0.0;
@@ -411,7 +423,22 @@ namespace gcopter
                     for (int k = 0; k < K; k++)
                     {
                         outerNormal = hPolys[L].block<1, 3>(k, 0);
-                        violaPos = outerNormal.dot(pos) + hPolys[L](k, 3);
+                        if(model == static_cast<int>(Model::SPHERE)) {
+                            violaPos = outerNormal.dot(pos) + hPolys[L](k, 3); // Compute whether the position is inside the polyhedron or not
+                        }
+                        else if(model == static_cast<int>(Model::CUBOID)) {
+                            violaPos = outerNormal.dot(pos) + hPolys[L](k, 3);
+                        }
+                        else if(model == static_cast<int>(Model::ELLIPSOID)) {
+                            //TODO: Get 'Eigen::Vector3d ellipsoid' radius and height as parameter
+                            eNormGd = (rotate.transpose() * outerNormal).array() * ellipsoid.array();
+                            eNorm = eNormGd.norm();
+                            eNormGd /= eNorm;
+                            violaPos = outerNormal.dot(pos) + hPolys[L](k, 3) + eNorm;
+                        }
+                        else if(model == static_cast<int>(Model::POLYHEDRON)) {
+                            violaPos = outerNormal.dot(pos) + hPolys[L](k, 3);
+                        }
                         if (smoothedL1(violaPos, smoothFactor, violaPosPena, violaPosPenaD))
                         {
                             gradPos += weightPos * violaPosPenaD * outerNormal;
@@ -495,7 +522,8 @@ namespace gcopter
                                     obj.hPolyIdx, obj.hPolytopes,
                                     obj.smoothEps, obj.integralRes,
                                     obj.magnitudeBd, obj.penaltyWt, obj.flatmap,
-                                    cost, obj.partialGradByTimes, obj.partialGradByCoeffs);
+                                    cost, obj.partialGradByTimes, obj.partialGradByCoeffs,
+                                    0, Eigen::Vector3d::Zero()); // TODO: Add model and ellipsoid
 
             obj.minco.propogateGrad(obj.partialGradByCoeffs, obj.partialGradByTimes,
                                     obj.gradByPoints, obj.gradByTimes);
