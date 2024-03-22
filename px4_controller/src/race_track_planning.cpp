@@ -167,19 +167,19 @@ public:
         if (mapInitialized)
         {
             startGoal.clear();
-            if (startGoal.size() == 0)
-            {
-                const Eigen::Vector3d current(odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z);
-                if (voxelMap.query(current) == 0)
-                {
-                    visualizer.visualizeStartGoal(current, 0.5, startGoal.size());
-                    startGoal.emplace_back(current);
-                }
-                else
-                {
-                    ROS_WARN("Infeasible Hover Position !!!\n");
-                }                
-            }
+            // if (startGoal.size() == 0)
+            // {
+            //     const Eigen::Vector3d current(odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z);
+            //     if (voxelMap.query(current) == 0)
+            //     {
+            //         visualizer.visualizeStartGoal(current, 0.5, startGoal.size());
+            //         startGoal.emplace_back(current);
+            //     }
+            //     else
+            //     {
+            //         ROS_WARN("Infeasible Hover Position !!!\n");
+            //     }
+            // }
 
             for (int i = 0; i < config.waypoints.size(); ++i)
             {
@@ -529,7 +529,6 @@ public:
                                                      fdata[cur + 1],
                                                      fdata[cur + 2]));
             }
-
             voxelMap.dilate(std::ceil(config.dilateRadius / voxelMap.getScale()));
 
             mapInitialized = true;

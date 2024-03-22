@@ -156,6 +156,7 @@ namespace firi
         return cost;
     }
 
+    // Find the maximum volume inscribed ellipsoid (MVIE) of a polyhedron
     // Each row of hPoly is defined by h0, h1, h2, h3 as
     // h0*x + h1*y + h2*z + h3 <= 0
     // R, p, r are ALWAYS taken as the initial guess
@@ -264,6 +265,11 @@ namespace firi
         return ret >= 0;
     }
 
+    // Fast Iterative Region Inflation
+    // bd Max boundary for the polyhedron 
+    // pc Boundary pointcloud of obstacles
+    // a Start point
+    // b Target point the polyhedron should cover
     inline bool firi(const Eigen::MatrixX4d &bd,
                      const Eigen::Matrix3Xd &pc,
                      const Eigen::Vector3d &a,

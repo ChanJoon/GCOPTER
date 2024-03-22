@@ -1,5 +1,5 @@
 WayPoints:                  
-                            - {x: 0.0, y: 3.5, z: 2.8}
+                            - {x: 0.0, y: 2.5, z: 2.8}
                             - {x: 0.0, y: 7.7, z: 2.8}
                             - {x: 2.75, y: 10.45, z: 2.8}
                             - {x: 4.9, y: 7.4, z: 2.8}
@@ -13,9 +13,10 @@ MapTopic:                   '/gt_map'
 
 OdomTopic:                  '/mavros/local_position/odom'
 
-DilateRadius:               0.05
+DilateRadius:               0.1
+# DilateRadius:               0.2       # Iris
 
-VoxelWidth:                 0.02
+VoxelWidth:                 0.1
 
 MapBound:                   [-25.0, 25.0, -25.0, 25.0, 0.0, 5.0]
 
