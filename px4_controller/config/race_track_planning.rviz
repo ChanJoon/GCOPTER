@@ -4,6 +4,7 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /Global Options1
         - /GlobalMap1/GlobalMap1
         - /Odometry1
         - /Odometry1/Shape1
@@ -29,7 +30,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: GlobalMap
   - Class: rviz/Displays
     Help Height: 78
     Name: Displays
@@ -127,7 +128,7 @@ Visualization Manager:
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /visualizer/waypoints
-      Name: Marker
+      Name: Waypoints
       Namespaces:
         {}
       Queue Size: 100
@@ -135,7 +136,7 @@ Visualization Manager:
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /visualizer/route
-      Name: Marker
+      Name: Route
       Namespaces:
         {}
       Queue Size: 100
@@ -143,7 +144,7 @@ Visualization Manager:
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /visualizer/mesh
-      Name: Marker
+      Name: Mesh
       Namespaces:
         {}
       Queue Size: 100
@@ -151,7 +152,7 @@ Visualization Manager:
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /visualizer/edge
-      Name: Marker
+      Name: Edge
       Namespaces:
         {}
       Queue Size: 100
@@ -159,7 +160,7 @@ Visualization Manager:
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /visualizer/spheres
-      Name: Marker
+      Name: Spheres
       Namespaces:
         {}
       Queue Size: 100
@@ -167,7 +168,7 @@ Visualization Manager:
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /visualizer/trajectory
-      Name: Marker
+      Name: Trajectory
       Namespaces:
         {}
       Queue Size: 100
@@ -232,12 +233,12 @@ Visualization Manager:
       Shape:
         Alpha: 1
         Axes Length: 3
-        Axes Radius: 0.10000000149011612
+        Axes Radius: 0.30000001192092896
         Color: 255; 25; 0
-        Head Length: 0.30000001192092896
-        Head Radius: 0.10000000149011612
-        Shaft Length: 1
-        Shaft Radius: 0.05000000074505806
+        Head Length: 0.5
+        Head Radius: 0.30000001192092896
+        Shaft Length: 3
+        Shaft Radius: 0.10000000149011612
         Value: Axes
       Topic: /desired_state
       Unreliable: false
@@ -246,7 +247,7 @@ Visualization Manager:
   Global Options:
     Background Color: 235; 235; 235
     Default Light: true
-    Fixed Frame: odom
+    Fixed Frame: map
     Frame Rate: 60
   Name: root
   Tools:
@@ -270,7 +271,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 9.395356178283691
+      Distance: 8.413301467895508
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -278,17 +279,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -3.1618142127990723
-        Y: 0.902076780796051
-        Z: 10.906511306762695
+        X: 9.03345775604248
+        Y: 6.184922695159912
+        Z: 10.465362548828125
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.059796690940857
+      Pitch: 0.9647964835166931
       Target Frame: drone1
-      Yaw: 3.8066678047180176
+      Yaw: 6.0966715812683105
     Saved:
       - Class: rviz/ThirdPersonFollower
         Distance: 4.048277378082275
