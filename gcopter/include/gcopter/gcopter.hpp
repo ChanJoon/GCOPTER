@@ -83,6 +83,7 @@ namespace gcopter
         Eigen::VectorXd physicalPm;
         double allocSpeed;
         int quadModel;
+        Eigen::Vector3d cuboidParams;
         Eigen::Vector3d ellipsoidParams;
 
         lbfgs::lbfgs_parameter_t lbfgs_params;
@@ -328,6 +329,30 @@ namespace gcopter
             }
         }
 
+        static inline void normalizeFDF(const Eigen::Vector3d &x,
+                                Eigen::Vector3d &xNor,
+                                Eigen::Matrix3d &G)
+        {
+            const double a = x(0), b = x(1), c = x(2);
+            const double aSqr = a * a, bSqr = b * b, cSqr = c * c;
+            const double ab = a * b, bc = b * c, ca = c * a;
+            const double xSqrNorm = aSqr + bSqr + cSqr;
+            const double xNorm = sqrt(xSqrNorm);
+            const double den = xSqrNorm * xNorm;
+            xNor = x / xNorm;
+            G(0, 0) = bSqr + cSqr;
+            G(0, 1) = -ab;
+            G(0, 2) = -ca;
+            G(1, 0) = -ab;
+            G(1, 1) = aSqr + cSqr;
+            G(1, 2) = -bc;
+            G(2, 0) = -ca;
+            G(2, 1) = -bc;
+            G(2, 2) = aSqr + bSqr;
+            G /= den;
+            return;
+        }
+
         // magnitudeBounds = [v_max, omg_max, theta_max, thrust_min, thrust_max]^T
         // penaltyWeights = [pos_weight, vel_weight, omg_weight, theta_weight, thrust_weight]^T
         // physicalParams = [vehicle_mass, gravitational_acceleration, horitonral_drag_coeff,
@@ -344,7 +369,8 @@ namespace gcopter
                                                    double &cost,
                                                    Eigen::VectorXd &gradT,
                                                    Eigen::MatrixX3d &gradC,
-                                                   const int &model, //MEMO 0: sphere, 1: cuboid, 2: ellipsoid, 3: polyhedron
+                                                   const int &modelType, //MEMO 0: sphere, 1: cuboid, 2: ellipsoid, 3: polyhedron
+                                                   const Eigen::Vector3d &cuboid,
                                                    const Eigen::Vector3d &ellipsoid)
         {
             const double velSqrMax = magnitudeBounds(0) * magnitudeBounds(0);
@@ -375,12 +401,24 @@ namespace gcopter
             Eigen::Matrix<double, 6, 1> beta0, beta1, beta2, beta3, beta4;
             Eigen::Vector3d outerNormal;
             int K, L;
-            double eNorm;
-            Eigen::Vector3d eNormGd;
             double violaPos, violaVel, violaOmg, violaTheta, violaThrust;
             double violaPosPenaD, violaVelPenaD, violaOmgPenaD, violaThetaPenaD, violaThrustPenaD;
             double violaPosPena, violaVelPena, violaOmgPena, violaThetaPena, violaThrustPena;
             double node, pena;
+
+            Eigen::Vector3d h;
+            Eigen::Vector3d yB, zB, czB;
+            Eigen::Matrix3d dxB, dyB, dzB;
+            Eigen::Matrix3d cdzB, dnczB;
+            double outerNormalDotVel;
+            double eNorm;
+            Eigen::Vector3d eNormGd;
+            Eigen::Vector3d gradSdT;
+            Eigen::Matrix3d gradSdTxyz;
+            double violaPosSqr, violaPosCub;
+            double gradSignedDt;
+            Eigen::Matrix<double, 6, 3> gradSdCx, gradSdCy, gradSdCz, gradSdC;
+            Eigen::Matrix<double, 6, 3> beta2dOuterNormalTp, beta0dOuterNormalTp;
 
             const int pieceNum = T.size();
             const double integralFrac = 1.0 / integralResolution;
@@ -390,6 +428,8 @@ namespace gcopter
                 step = T(i) * integralFrac;
                 for (int j = 0; j <= integralResolution; j++)
                 {
+                    node = (j == 0 || j == integralResolution) ? 0.5 : 1.0;
+                    alpha = j * integralFrac;
                     s1 = j * step;
                     s2 = s1 * s1;
                     s3 = s2 * s1;
@@ -420,31 +460,73 @@ namespace gcopter
                     gradPos.setZero(), gradVel.setZero(), gradOmg.setZero();
                     pena = 0.0;
 
+                    // Derivatives of attitude penalty
+                    h = acc;
+                    h(2) += 9.8;
+                    normalizeFDF(h, zB, dzB);
+
+                    czB << 0.0, zB(2), -zB(1);
+                    cdzB << Eigen::RowVector3d::Zero(), dzB.row(2), -dzB.row(1);
+                    
+                    yB = rotate.col(1);
+                    zB = rotate.col(2);
+                    normalizeFDF(czB, yB, dnczB);
+                    dyB = dnczB * cdzB;
+                    dxB.col(0) = dyB.col(0).cross(zB) + yB.cross(dzB.col(0));
+                    dxB.col(1) = dyB.col(1).cross(zB) + yB.cross(dzB.col(1));
+                    dxB.col(2) = dyB.col(2).cross(zB) + yB.cross(dzB.col(2));
+                    gradSdTxyz.col(0) = dxB * jer;
+                    gradSdTxyz.col(1) = dyB * jer;
+                    gradSdTxyz.col(2) = dzB * jer;
+
                     L = hIdx(i);
                     K = hPolys[L].rows();
                     for (int k = 0; k < K; k++)
                     {
                         outerNormal = hPolys[L].block<1, 3>(k, 0);
-                        if(model == static_cast<int>(Model::SPHERE)) {
+                        outerNormalDotVel = outerNormal.dot(vel);
+                        beta0dOuterNormalTp = beta0 * outerNormal.transpose();
+                        beta2dOuterNormalTp = beta2 * outerNormal.transpose();
+                        gradSdT = gradSdTxyz.transpose() * outerNormal;
+                        gradSdCx = beta2dOuterNormalTp * dxB;
+                        gradSdCy = beta2dOuterNormalTp * dyB;
+                        gradSdCz = beta2dOuterNormalTp * dzB;
+                        if(modelType == static_cast<int>(Model::SPHERE)) {
                             violaPos = outerNormal.dot(pos) + hPolys[L](k, 3); // Compute whether the position is inside the polyhedron or not
                         }
-                        else if(model == static_cast<int>(Model::CUBOID)) {
+                        else if(modelType == static_cast<int>(Model::CUBOID)) {
                             violaPos = outerNormal.dot(pos) + hPolys[L](k, 3);
                         }
-                        else if(model == static_cast<int>(Model::ELLIPSOID)) {
-                            //TODO: Get 'Eigen::Vector3d ellipsoid' radius and height as parameter
+                        else if(modelType == static_cast<int>(Model::ELLIPSOID)) {
                             eNormGd = (rotate.transpose() * outerNormal).array() * ellipsoid.array();
                             eNorm = eNormGd.norm();
                             eNormGd /= eNorm;
                             violaPos = outerNormal.dot(pos) + hPolys[L](k, 3) + eNorm;
+                            if (violaPos > 0) {
+                                eNormGd.array() *= ellipsoid.array();
+                                violaPosSqr = violaPos * violaPos;
+                                violaPosCub = violaPos * violaPosSqr;
+                                gradSdC = beta0dOuterNormalTp +
+                                        gradSdCx * eNormGd(0) +
+                                        gradSdCy * eNormGd(1) +
+                                        gradSdCz * eNormGd(2);
+                                gradSignedDt = alpha * (outerNormalDotVel +
+                                                        gradSdT(0) * eNormGd(0) +
+                                                        gradSdT(1) * eNormGd(1) +
+                                                        gradSdT(2) * eNormGd(2));
+                                // ci(0) = W_c; penalty for collision avoidance
+                                gradC.block<6, 3>(i * 6, 0) += node * step * weightPos * 3.0 * violaPosSqr * gradSdC;
+                                gradT(i) += node * weightPos * (3.0 * violaPosSqr * gradSignedDt * step + violaPosCub / integralResolution);
+                            }
                         }
-                        else if(model == static_cast<int>(Model::POLYHEDRON)) {
+                        else if(modelType == static_cast<int>(Model::POLYHEDRON)) {
                             violaPos = outerNormal.dot(pos) + hPolys[L](k, 3);
                         }
                         else {
                             std::cerr << "Model not supported!" << std::endl;
                             return;
                         }
+                        // MEMO: Is this temporal constraint ellimination?
                         if (smoothedL1(violaPos, smoothFactor, violaPosPena, violaPosPenaD))
                         {
                             gradPos += weightPos * violaPosPenaD * outerNormal;
@@ -482,8 +564,6 @@ namespace gcopter
                                      totalGradPos, totalGradVel, totalGradAcc, totalGradJer,
                                      totalGradPsi, totalGradPsiD);
 
-                    node = (j == 0 || j == integralResolution) ? 0.5 : 1.0;
-                    alpha = j * integralFrac;
                     gradC.block<6, 3>(i * 6, 0) += (beta0 * totalGradPos.transpose() +
                                                     beta1 * totalGradVel.transpose() +
                                                     beta2 * totalGradAcc.transpose() +
@@ -529,7 +609,7 @@ namespace gcopter
                                     obj.smoothEps, obj.integralRes,
                                     obj.magnitudeBd, obj.penaltyWt, obj.flatmap,
                                     cost, obj.partialGradByTimes, obj.partialGradByCoeffs,
-                                    obj.quadModel, obj.ellipsoidParams); // TODO: Add model and ellipsoid
+                                    obj.quadModel, obj.cuboidParams, obj.ellipsoidParams);
 
             obj.minco.propogateGrad(obj.partialGradByCoeffs, obj.partialGradByTimes,
                                     obj.gradByPoints, obj.gradByTimes);
@@ -769,7 +849,8 @@ namespace gcopter
                           const Eigen::VectorXd &magnitudeBounds,
                           const Eigen::VectorXd &penaltyWeights,
                           const Eigen::VectorXd &physicalParams,
-                          const int &model, //MEMO 0: sphere, 1: cuboid, 2: ellipsoid, 3: polyhedron
+                          const int &modelType, //MEMO 0: sphere, 1: cuboid, 2: ellipsoid, 3: polyhedron
+                          const Eigen::Vector3d &cuboid,
                           const Eigen::Vector3d &ellipsoid)
         {
             rho = timeWeight;
@@ -795,7 +876,8 @@ namespace gcopter
             penaltyWt = penaltyWeights;
             physicalPm = physicalParams;
             allocSpeed = magnitudeBd(0) * 3.0;
-            quadModel = model;
+            quadModel = modelType;
+            cuboidParams = cuboid;
             ellipsoidParams = ellipsoid;
 
             getShortestPath(headPVA.col(0), tailPVA.col(0),

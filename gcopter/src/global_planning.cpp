@@ -211,7 +211,7 @@ public:
                                    magnitudeBounds,
                                    penaltyWeights,
                                    physicalParams,
-                                   0, Eigen::Vector3d::Zero()))
+                                   0, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero()))
                 {
                     return;
                 }
