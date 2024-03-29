@@ -4,6 +4,7 @@ WayPoints:
                             - {x: 2.75, y: 10.45, z: 2.8}
                             - {x: 4.9, y: 7.4, z: 2.8}
                             - {x: 4.9, y: 2.6, z: 2.8}
+                            - {x: 3.7, y: 0.0, z: 2.0}
                             - {x: 2.6, y: 2.0, z: 1.2}
                             - {x: 2.6, y: 2.75, z: 1.2}
                             - {x: 2.0, y: 5.3, z: 1.2}
@@ -48,12 +49,29 @@ ParasDrag:                  0.01
 
 SpeedEps:                   0.0001
 
-WeightT:                    20.0
+WeightT:                    10000.0 # 20.0
 
-ChiVec:                     [1.0e+4, 1.0e+4, 1.0e+4, 1.0e+4, 1.0e+5]
+ChiVec:                     [1.0e+7, 1.0e+4, 1.0e+4, 1.0e+4, 1.0e+5] #[1.0e+4, 1.0e+4, 1.0e+4, 1.0e+4, 1.0e+5] # [pos_weight, vel_weight, omg_weight, theta_weight, thrust_weight]
 
 SmoothingEps:               1.0e-2
 
 IntegralIntervs:            16
 
 RelCostTol:                 1.0e-5
+
+## Modelling Parameters
+ModelType:                  0
+# Ellipsoid
+HorizHalfLen:               0.25
+VertHalfLen:                0.075
+
+# Rectangular Box
+RectangularBox:             [0.47, 0.47, 0.11]
+
+## Visualizer
+OdomFrame:                  'map'
+TrajVizWidth:               1.0
+TrajVizRGB:                 [0.8, 0.0, 0.0]
+EllipsoidPath:              '/misc/sphere.stl'
+EllipsoidVizRGBA:            [1.0, 0.0, 1.0, 1.0]
+QuadrotorPath:              '/misc/quadcopter.dae'

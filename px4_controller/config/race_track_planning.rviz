@@ -146,7 +146,7 @@ Visualization Manager:
       Marker Topic: /visualizer/mesh
       Name: Mesh
       Namespaces:
-        {}
+        mesh: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -154,7 +154,7 @@ Visualization Manager:
       Marker Topic: /visualizer/edge
       Name: Edge
       Namespaces:
-        {}
+        edge: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -162,7 +162,7 @@ Visualization Manager:
       Marker Topic: /visualizer/spheres
       Name: Spheres
       Namespaces:
-        {}
+        StartGoal: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -242,6 +242,22 @@ Visualization Manager:
         Value: Axes
       Topic: /desired_state
       Unreliable: false
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /visualizer/ellipsoid
+      Name: visEllipsoid
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /visualizer/quadrotor
+      Name: visQuadrotor
+      Namespaces:
+        {}
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:

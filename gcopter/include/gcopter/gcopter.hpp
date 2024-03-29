@@ -407,7 +407,7 @@ namespace gcopter
             double node, pena;
 
             Eigen::Vector3d h;
-            Eigen::Vector3d yB, zB, czB;
+            Eigen::Vector3d xB, yB, zB, czB;
             Eigen::Matrix3d dxB, dyB, dzB;
             Eigen::Matrix3d cdzB, dnczB;
             double outerNormalDotVel;
@@ -461,16 +461,20 @@ namespace gcopter
                     pena = 0.0;
 
                     // Derivatives of attitude penalty
+                    // TODO Check the correctness of this rotation matrix (from quaternion vs body frame acceleration)
                     h = acc;
                     h(2) += 9.8;
                     normalizeFDF(h, zB, dzB);
+                    zB = rotate.col(2);
 
                     czB << 0.0, zB(2), -zB(1);
                     cdzB << Eigen::RowVector3d::Zero(), dzB.row(2), -dzB.row(1);
-                    
-                    yB = rotate.col(1);
-                    zB = rotate.col(2);
                     normalizeFDF(czB, yB, dnczB);
+                    yB = rotate.col(1);
+                    // xB = yB.cross(zB);
+                    // rotate << xB, yB, zB;
+                    // zB = rotate.col(2);
+                    // std::cout << "yB: " << yB << " zB: " << zB << std::endl;
                     dyB = dnczB * cdzB;
                     dxB.col(0) = dyB.col(0).cross(zB) + yB.cross(dzB.col(0));
                     dxB.col(1) = dyB.col(1).cross(zB) + yB.cross(dzB.col(1));
@@ -493,6 +497,12 @@ namespace gcopter
                         gradSdCz = beta2dOuterNormalTp * dzB;
                         if(modelType == static_cast<int>(Model::SPHERE)) {
                             violaPos = outerNormal.dot(pos) + hPolys[L](k, 3); // Compute whether the position is inside the polyhedron or not
+                            // MEMO: Is this temporal constraint ellimination?
+                            if (smoothedL1(violaPos, smoothFactor, violaPosPena, violaPosPenaD))
+                            {
+                                gradPos += weightPos * violaPosPenaD * outerNormal;
+                                pena += weightPos * violaPosPena;
+                            }
                         }
                         else if(modelType == static_cast<int>(Model::CUBOID)) {
                             violaPos = outerNormal.dot(pos) + hPolys[L](k, 3);
@@ -517,6 +527,8 @@ namespace gcopter
                                 // ci(0) = W_c; penalty for collision avoidance
                                 gradC.block<6, 3>(i * 6, 0) += node * step * weightPos * 3.0 * violaPosSqr * gradSdC;
                                 gradT(i) += node * weightPos * (3.0 * violaPosSqr * gradSignedDt * step + violaPosCub / integralResolution);
+
+                                pena += weightPos * violaPosCub;
                             }
                         }
                         else if(modelType == static_cast<int>(Model::POLYHEDRON)) {
@@ -525,12 +537,6 @@ namespace gcopter
                         else {
                             std::cerr << "Model not supported!" << std::endl;
                             return;
-                        }
-                        // MEMO: Is this temporal constraint ellimination?
-                        if (smoothedL1(violaPos, smoothFactor, violaPosPena, violaPosPenaD))
-                        {
-                            gradPos += weightPos * violaPosPenaD * outerNormal;
-                            pena += weightPos * violaPosPena;
                         }
                     }
 
@@ -765,6 +771,7 @@ namespace gcopter
             int nv;
             PolyhedronH curIH;
             PolyhedronV curIV, curIOB;
+            std::cout << "[SETUP] Enumerating Vertices...";
             for (int i = 0; i < sizeCorridor; i++)
             {
                 if (!geo_utils::enumerateVs(hPs[i], curIV))
@@ -789,7 +796,9 @@ namespace gcopter
                 curIOB.col(0) = curIV.col(0);
                 curIOB.rightCols(nv - 1) = curIV.rightCols(nv - 1).colwise() - curIV.col(0);
                 vPs.push_back(curIOB);
+                std::cout << " O";
             }
+            std::cout << std::endl;
 
             if (!geo_utils::enumerateVs(hPs.back(), curIV))
             {
@@ -864,10 +873,12 @@ namespace gcopter
                     hPolytopes[i].leftCols<3>().rowwise().norm();
                 hPolytopes[i].array().colwise() /= norms;
             }
+            std::cout << "[SETUP] Normalize " << hPolytopes.size() << " polytopes!" << std::endl;
             if (!processCorridor(hPolytopes, vPolytopes))
             {
                 return false;
             }
+            std::cout << "[SETUP] Corridor Processed!" << std::endl;
 
             polyN = hPolytopes.size();
             smoothEps = smoothingFactor;
@@ -877,6 +888,7 @@ namespace gcopter
             physicalPm = physicalParams;
             allocSpeed = magnitudeBd(0) * 3.0;
             quadModel = modelType;
+            // std::cout << "Quadrotor Model Type: " << quadModel << std::endl;
             cuboidParams = cuboid;
             ellipsoidParams = ellipsoid;
 
@@ -909,6 +921,7 @@ namespace gcopter
                     hPolyIdx(j) = i;
                 }
             }
+            std::cout << "Assign polytopes indexes and according spatial dimension!" << std::endl;
 
             // Setup for MINCO_S3NU, FlatnessMap, and L-BFGS solver
             minco.setConditions(headPVA, tailPVA, pieceN);
@@ -935,13 +948,16 @@ namespace gcopter
 
             setInitial(shortPath, allocSpeed, pieceIdx, points, times);
             backwardT(times, tau);
+            std::cout << "[OPTIMIZE] Initial Time Allocation" << std::endl;
             backwardP(points, vPolyIdx, vPolytopes, xi);
+            std::cout << "[OPTIMIZE] Initial Spatial Allocation" << std::endl;
 
             double minCostFunctional;
             lbfgs_params.mem_size = 256;
             lbfgs_params.past = 3;
             lbfgs_params.min_step = 1.0e-32;
-            lbfgs_params.g_epsilon = 0.0;
+            // lbfgs_params.g_epsilon = 0.0;
+            lbfgs_params.g_epsilon = 1.0e-16;
             lbfgs_params.delta = relCostTol;
 
             int ret = lbfgs::lbfgs_optimize(x,
