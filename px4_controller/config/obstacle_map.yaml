@@ -1,0 +1,81 @@
+WayPoints:                  
+                            - {x: 0.0, y: 2.5, z: 2.8}
+                            - {x: 6.378, y: 16.460, z: 3.0}
+                            - {x: 18.005, y: 9.634, z: 3.0}
+                            - {x: 17.906, y: -6.548, z: 3.0}
+                            - {x: 8.742, y: -11.460, z: 3.0}
+                            - {x: -3.626, y: -11.737, z: 3.0}
+                            - {x: -15.380, y: -11.277, z: 3.0}
+                            - {x: -15.972, y: 4.095, z: 3.0}
+                            - {x: -26.138, y: 5.272, z: 3.0}
+                            - {x: -32.025, y: 14.381, z: 3.0}
+                            - {x: -26.248, y: 18.536, z: 3.0}
+                            - {x: -26.096, y: 26.100, z: 3.0}
+                            - {x: -13.861, y: 27.204, z: 3.0}
+
+
+MapTopic:                   '/gt_map'
+
+OdomTopic:                  '/mavros/local_position/odom'
+
+DilateRadius:               0.1
+# DilateRadius:               0.2       # Iris
+
+VoxelWidth:                 0.1
+
+MapBound:                   [-25.0, 25.0, -25.0, 25.0, 0.0, 5.0]
+
+TimeoutRRT:                 0.02
+
+MaxVelMag:                  12.0
+
+MaxBdrMag:                  2.1
+# MaxBdrMag:                  3.84          # Iris
+
+# MaxTiltAngle:               1.05
+MaxTiltAngle:               0.785398      # Iris
+
+MinThrust:                  2.0
+
+# MaxThrust:                  12.0
+MaxThrust:                  24.0          # Iris
+
+# VehicleMass:                0.61
+VehicleMass:                1.535         # Iris 1.535
+
+GravAcc:                    9.8
+
+HorizDrag:                  0.70
+
+VertDrag:                   0.80
+
+ParasDrag:                  0.01
+
+SpeedEps:                   0.0001
+
+WeightT:                    20.0  # 10000.0
+
+ChiVec:                     [1.0e+4, 1.0e+4, 1.0e+4, 1.0e+4, 1.0e+5] # [pos_weight 1.0e+7, vel_weight, omg_weight, theta_weight, thrust_weight]
+
+SmoothingEps:               1.0e-2
+
+IntegralIntervs:            16
+
+RelCostTol:                 1.0e-5
+
+## Modelling Parameters
+ModelType:                  0
+# Ellipsoid
+HorizHalfLen:               0.25
+VertHalfLen:                0.075
+
+# Rectangular Box
+RectangularBox:             [0.47, 0.47, 0.11]
+
+## Visualizer
+OdomFrame:                  'map'
+TrajVizWidth:               1.0
+TrajVizRGB:                 [0.8, 0.0, 0.0]
+EllipsoidPath:              '/misc/sphere.stl'
+EllipsoidVizRGBA:            [1.0, 0.0, 1.0, 1.0]
+QuadrotorPath:              '/misc/quadcopter.dae'
