@@ -1,4 +1,4 @@
-#include "misc/visualizer.hpp"
+#include "visualization.hpp"
 #include "gcopter/trajectory.hpp"
 #include "gcopter/gcopter.hpp"
 #include "gcopter/firi.hpp"
@@ -7,6 +7,7 @@
 #include "gcopter/sfc_gen.hpp"
 
 #include <ros/ros.h>
+#include <ros/package.h>
 #include <ros/console.h>
 #include <geometry_msgs/Point.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -28,60 +29,6 @@
 #include <algorithm>
 #include <utility>
 #include <xmlrpcpp/XmlRpcValue.h>
-
-struct Config
-{
-    XmlRpc::XmlRpcValue waypoints;
-    std::string mapTopic;
-    std::string odomTopic;
-    double dilateRadius;
-    double voxelWidth;
-    std::vector<double> mapBound;
-    double timeoutRRT;
-    double maxVelMag;
-    double maxBdrMag;
-    double maxTiltAngle;
-    double minThrust;
-    double maxThrust;
-    double vehicleMass;
-    double gravAcc;
-    double horizDrag;
-    double vertDrag;
-    double parasDrag;
-    double speedEps;
-    double weightT;
-    std::vector<double> chiVec;
-    double smoothingEps;
-    int integralIntervs;
-    double relCostTol;
-
-    Config(const ros::NodeHandle &nh_priv)
-    {
-        nh_priv.getParam("WayPoints", waypoints);
-        nh_priv.getParam("MapTopic", mapTopic);
-        nh_priv.getParam("OdomTopic", odomTopic);
-        nh_priv.getParam("DilateRadius", dilateRadius);
-        nh_priv.getParam("VoxelWidth", voxelWidth);
-        nh_priv.getParam("MapBound", mapBound);
-        nh_priv.getParam("TimeoutRRT", timeoutRRT);
-        nh_priv.getParam("MaxVelMag", maxVelMag);
-        nh_priv.getParam("MaxBdrMag", maxBdrMag);
-        nh_priv.getParam("MaxTiltAngle", maxTiltAngle);
-        nh_priv.getParam("MinThrust", minThrust);
-        nh_priv.getParam("MaxThrust", maxThrust);
-        nh_priv.getParam("VehicleMass", vehicleMass);
-        nh_priv.getParam("GravAcc", gravAcc);
-        nh_priv.getParam("HorizDrag", horizDrag);
-        nh_priv.getParam("VertDrag", vertDrag);
-        nh_priv.getParam("ParasDrag", parasDrag);
-        nh_priv.getParam("SpeedEps", speedEps);
-        nh_priv.getParam("WeightT", weightT);
-        nh_priv.getParam("ChiVec", chiVec);
-        nh_priv.getParam("SmoothingEps", smoothingEps);
-        nh_priv.getParam("IntegralIntervs", integralIntervs);
-        nh_priv.getParam("RelCostTol", relCostTol);
-    }
-};
 
 class TrackPlanner
 {
@@ -136,7 +83,7 @@ public:
         : config(conf),
           nh(nh_),
           mapInitialized(false),
-          visualizer(nh)
+          visualizer(nh, config)
     {
         const Eigen::Vector3i xyz((config.mapBound[1] - config.mapBound[0]) / config.voxelWidth,
                                   (config.mapBound[3] - config.mapBound[2]) / config.voxelWidth,
@@ -620,13 +567,13 @@ public:
                                magnitudeBounds,
                                penaltyWeights,
                                physicalParams,
-                               0, Eigen::Vector3d::Zero()))
+                               config.modelType, config.cuboid, config.ellipsoid)) // TODO: Add support for polyhedron
             {
                 return;
             }
             std::chrono::high_resolution_clock::time_point toc = std::chrono::high_resolution_clock::now();
             double compTime = std::chrono::duration_cast<std::chrono::microseconds>(toc - tic).count() * 1.0e-3;
-            std::cout << "GCOPTER SETUP DONE! Setup time usage: " << compTime << " ms\n" << std::endl;
+            std::cout << "GCOPTER Setup Done! Setup time usage: " << compTime << " ms\n" << std::endl;
 
             if (std::isinf(gcopter.optimize(traj, config.relCostTol)))
             {
@@ -634,7 +581,7 @@ public:
             }
             std::chrono::high_resolution_clock::time_point tac = std::chrono::high_resolution_clock::now();
             compTime = std::chrono::duration_cast<std::chrono::microseconds>(tac - toc).count() * 1.0e-3;
-            std::cout << "GCOPTER OPTIMIZATION DONE! Optimization time usage: " << compTime << " ms\n" << std::endl;
+            std::cout << "GCOPTER Optimization Done! Optimization time usage: " << compTime << " ms\n" << std::endl;
 
             compTime = std::chrono::duration_cast<std::chrono::microseconds>(tac - tic).count() * 1.0e-3;
             printf("finished!!!\n");
@@ -647,6 +594,8 @@ public:
             {
                 trajStamp = ros::Time::now().toSec();
                 visualizer.visualize(traj, routes);
+                visualizer.visualizeEllipsoid(traj, 450);
+                visualizer.visualizeQuadrotor(traj, 450);
             }
             traj_msg = traj2msg(traj);
             trajPub.publish(traj_msg);

@@ -562,6 +562,20 @@ public:
         }
         return feasible;
     }
+    
+    inline void getRotation(const double &t,
+                            const double &yaw,
+                            const double &gAcc,
+                            Eigen::Matrix3d &rotM) const
+    {
+        rotM.col(2) = getAcc(t);
+        rotM(2, 2) += gAcc;
+        rotM.col(2).normalize();
+        rotM.col(1) = rotM.col(2).cross(Eigen::Vector3d(cos(yaw), sin(yaw), 0.0));
+        rotM.col(1).normalize();
+        rotM.col(0) = rotM.col(1).cross(rotM.col(2));
+        return;
+    }    
 };
 
 #endif

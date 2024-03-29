@@ -56,7 +56,6 @@ add_executable(position_controller_node
   src/controller.cpp
   src/hovthrkf.cpp
 )
-add_dependencies(position_controller_node quadrotor_msgs)
 target_link_libraries(position_controller_node
   ${catkin_LIBRARIES}
 )
