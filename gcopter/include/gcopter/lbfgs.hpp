@@ -344,6 +344,18 @@ namespace lbfgs
             if (param.max_linesearch <= count)
             {
                 /* Maximum number of iteration. */
+                // std::cout << "x: " << x.transpose() << std::endl;
+                std::cout << "f: " << f << std::endl;
+                // std::cout << "g: " << g.transpose() << std::endl;
+                std::cout << "stp: " << stp << std::endl;
+                // std::cout << "s: " << s.transpose() << std::endl;
+                // std::cout << "xp: " << xp.transpose() << std::endl;
+                // std::cout << "gp: " << gp.transpose() << std::endl;
+                std::cout << "stpmin: " << stpmin << std::endl;
+                std::cout << "stpmax: " << stpmax << std::endl;
+                std::cout << "finit: " << finit << std::endl;
+                std::cout << "dgtest: " << dgtest << std::endl;
+                std::cout << "dstest: " << dstest << std::endl;
                 return LBFGSERR_MAXIMUMLINESEARCH;
             }
             if (brackt && (nu - mu) < param.machine_prec * nu)

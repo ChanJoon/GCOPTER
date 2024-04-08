@@ -96,6 +96,54 @@ namespace gcopter
         Eigen::VectorXd partialGradByTimes;
 
     private:
+        static inline Eigen::Matrix3d getQuatTransDW(const Eigen::Vector4d &quat)
+        {
+            Eigen::Matrix3d ret;
+            double x = quat(1);
+            double y = quat(2);
+            double z = quat(3);
+            ret << 0, 2 * z, -2 * y,
+                -2 * z, 0, 2 * x,
+                2 * y, -2 * x, 0;
+            return ret;
+        }
+        static inline Eigen::Matrix3d getQuatTransDX(const Eigen::Vector4d &quat)
+        {
+            Eigen::Matrix3d ret;
+            double w = quat(0);
+            double x = quat(1);
+            double y = quat(2);
+            double z = quat(3);
+            ret << 0, 2 * y, 2 * z,
+                2 * y, -4 * x, 2 * w,
+                2 * z, -2 * w, -4 * x;
+            return ret;
+        }
+        static inline Eigen::Matrix3d getQuatTransDY(const Eigen::Vector4d &quat)
+        {
+            Eigen::Matrix3d ret;
+            double w = quat(0);
+            double x = quat(1);
+            double y = quat(2);
+            double z = quat(3);
+            ret << -4 * y, 2 * x, -2 * w,
+                2 * x, 0, 2 * z,
+                2 * w, 2 * z, -4 * y;
+            return ret;
+        }
+        static inline Eigen::Matrix3d getQuatTransDZ(const Eigen::Vector4d &quat)
+        {
+            Eigen::Matrix3d ret;
+            double w = quat(0);
+            double x = quat(1);
+            double y = quat(2);
+            double z = quat(3);
+            ret << -4 * z, 2 * w, 2 * x,
+                -2 * w, -4 * z, 2 * y,
+                2 * x, 2 * y, 0;
+            return ret;
+        }
+
         static inline void forwardT(const Eigen::VectorXd &tau,
                                     Eigen::VectorXd &T)
         {
@@ -308,7 +356,7 @@ namespace gcopter
                                       double &f,
                                       double &df)
         {
-            if (x < 0.0)
+            if (x <= 0.0)
             {
                 return false;
             }
@@ -351,6 +399,31 @@ namespace gcopter
             G(2, 2) = aSqr + bSqr;
             G /= den;
             return;
+        }
+
+        static inline void getVertices(const Eigen::Vector3d &pos,
+                                       const Eigen::Matrix3d &rotate,
+                                       const Eigen::Vector3d &halfLen,
+                                       std::vector<Eigen::Vector3d> &vertices)
+        {
+            vertices.resize(8);
+            vertices[0] = pos + rotate.transpose() * Eigen::Vector3d(halfLen(0), halfLen(1), halfLen(2));
+            vertices[1] = pos + rotate.transpose() * Eigen::Vector3d(halfLen(0), halfLen(1), -halfLen(2));
+            vertices[2] = pos + rotate.transpose() * Eigen::Vector3d(halfLen(0), -halfLen(1), halfLen(2));
+            vertices[3] = pos + rotate.transpose() * Eigen::Vector3d(halfLen(0), -halfLen(1), -halfLen(2));
+            vertices[4] = pos + rotate.transpose() * Eigen::Vector3d(-halfLen(0), halfLen(1), halfLen(2));
+            vertices[5] = pos + rotate.transpose() * Eigen::Vector3d(-halfLen(0), halfLen(1), -halfLen(2));
+            vertices[6] = pos + rotate.transpose() * Eigen::Vector3d(-halfLen(0), -halfLen(1), halfLen(2));
+            vertices[7] = pos + rotate.transpose() * Eigen::Vector3d(-halfLen(0), -halfLen(1), -halfLen(2));
+            return;
+        }
+
+        static inline Eigen::Vector3d getVertexWithIndex(const int index,
+                                              const std::vector<Eigen::Vector3d> &vertices,
+                                              const Eigen::Vector3d &pos,
+                                              const Eigen::Matrix3d &rotate)
+        {
+            return rotate.transpose() * (vertices[index] - pos);
         }
 
         // magnitudeBounds = [v_max, omg_max, theta_max, thrust_min, thrust_max]^T
@@ -420,6 +493,10 @@ namespace gcopter
             Eigen::Matrix<double, 6, 3> gradSdCx, gradSdCy, gradSdCz, gradSdC;
             Eigen::Matrix<double, 6, 3> beta2dOuterNormalTp, beta0dOuterNormalTp;
 
+            Eigen::Vector4d stepGradQuat;
+
+            std::vector<Eigen::Vector3d> vertices;
+
             const int pieceNum = T.size();
             const double integralFrac = 1.0 / integralResolution;
             for (int i = 0; i < pieceNum; i++)
@@ -462,26 +539,23 @@ namespace gcopter
 
                     // Derivatives of attitude penalty
                     // TODO Check the correctness of this rotation matrix (from quaternion vs body frame acceleration)
-                    h = acc;
-                    h(2) += 9.8;
-                    normalizeFDF(h, zB, dzB);
-                    zB = rotate.col(2);
+                    // h = acc;
+                    // h(2) += 9.8;
+                    // normalizeFDF(h, zB, dzB);
 
-                    czB << 0.0, zB(2), -zB(1);
-                    cdzB << Eigen::RowVector3d::Zero(), dzB.row(2), -dzB.row(1);
-                    normalizeFDF(czB, yB, dnczB);
-                    yB = rotate.col(1);
+                    // czB << 0.0, zB(2), -zB(1);
+                    // cdzB << Eigen::RowVector3d::Zero(), dzB.row(2), -dzB.row(1);
+                    // normalizeFDF(czB, yB, dnczB);
                     // xB = yB.cross(zB);
                     // rotate << xB, yB, zB;
-                    // zB = rotate.col(2);
-                    // std::cout << "yB: " << yB << " zB: " << zB << std::endl;
-                    dyB = dnczB * cdzB;
-                    dxB.col(0) = dyB.col(0).cross(zB) + yB.cross(dzB.col(0));
-                    dxB.col(1) = dyB.col(1).cross(zB) + yB.cross(dzB.col(1));
-                    dxB.col(2) = dyB.col(2).cross(zB) + yB.cross(dzB.col(2));
-                    gradSdTxyz.col(0) = dxB * jer;
-                    gradSdTxyz.col(1) = dyB * jer;
-                    gradSdTxyz.col(2) = dzB * jer;
+
+                    // dyB = dnczB * cdzB;
+                    // dxB.col(0) = dyB.col(0).cross(zB) + yB.cross(dzB.col(0));
+                    // dxB.col(1) = dyB.col(1).cross(zB) + yB.cross(dzB.col(1));
+                    // dxB.col(2) = dyB.col(2).cross(zB) + yB.cross(dzB.col(2));
+                    // gradSdTxyz.col(0) = dxB * jer;
+                    // gradSdTxyz.col(1) = dyB * jer;
+                    // gradSdTxyz.col(2) = dzB * jer;
 
                     L = hIdx(i);
                     K = hPolys[L].rows();
@@ -505,30 +579,61 @@ namespace gcopter
                             }
                         }
                         else if(modelType == static_cast<int>(Model::CUBOID)) {
-                            violaPos = outerNormal.dot(pos) + hPolys[L](k, 3);
+                            getVertices(pos, rotate, ellipsoid, vertices);
+                            double maxViolaPos = 0.0;
+                            int maxVertIndex = 0;
+                            for (int vertIndex = 0; vertIndex < vertices.size(); vertIndex++) {
+                                violaPos = outerNormal.dot(vertices[vertIndex]) + hPolys[L](k, 3);
+                                if (violaPos > maxViolaPos) {
+                                    maxViolaPos = violaPos;
+                                    maxVertIndex = vertIndex;
+                                }
+                            }
+                            if (smoothedL1(maxViolaPos, smoothFactor, violaPosPena, violaPosPenaD))
+                            {
+                                Eigen::Vector3d maxViolaVertex = getVertexWithIndex(maxVertIndex, vertices, pos, rotate);
+                                stepGradQuat(0) = outerNormal.transpose() * getQuatTransDW(quat) * maxViolaVertex;
+                                stepGradQuat(1) = outerNormal.transpose() * getQuatTransDX(quat) * maxViolaVertex;
+                                stepGradQuat(2) = outerNormal.transpose() * getQuatTransDY(quat) * maxViolaVertex;
+                                stepGradQuat(3) = outerNormal.transpose() * getQuatTransDZ(quat) * maxViolaVertex;
+                                gradQuat += weightPos * violaPosPenaD * stepGradQuat;
+                                gradPos += weightPos * violaPosPenaD * outerNormal;
+                                pena += weightPos * violaPosPena;
+                            }
                         }
                         else if(modelType == static_cast<int>(Model::ELLIPSOID)) {
                             eNormGd = (rotate.transpose() * outerNormal).array() * ellipsoid.array();
                             eNorm = eNormGd.norm();
                             eNormGd /= eNorm;
                             violaPos = outerNormal.dot(pos) + hPolys[L](k, 3) + eNorm;
-                            if (violaPos > 0) {
-                                eNormGd.array() *= ellipsoid.array();
-                                violaPosSqr = violaPos * violaPos;
-                                violaPosCub = violaPos * violaPosSqr;
-                                gradSdC = beta0dOuterNormalTp +
-                                        gradSdCx * eNormGd(0) +
-                                        gradSdCy * eNormGd(1) +
-                                        gradSdCz * eNormGd(2);
-                                gradSignedDt = alpha * (outerNormalDotVel +
-                                                        gradSdT(0) * eNormGd(0) +
-                                                        gradSdT(1) * eNormGd(1) +
-                                                        gradSdT(2) * eNormGd(2));
-                                // ci(0) = W_c; penalty for collision avoidance
-                                gradC.block<6, 3>(i * 6, 0) += node * step * weightPos * 3.0 * violaPosSqr * gradSdC;
-                                gradT(i) += node * weightPos * (3.0 * violaPosSqr * gradSignedDt * step + violaPosCub / integralResolution);
+                            // if (violaPos > 0) {
+                            //     eNormGd.array() *= ellipsoid.array();
+                            //     violaPosSqr = violaPos * violaPos;
+                            //     violaPosCub = violaPos * violaPosSqr;
+                            //     gradSdC = beta0dOuterNormalTp +
+                            //             gradSdCx * eNormGd(0) +
+                            //             gradSdCy * eNormGd(1) +
+                            //             gradSdCz * eNormGd(2);
+                            //     gradSignedDt = alpha * (outerNormalDotVel +
+                            //                             gradSdT(0) * eNormGd(0) +
+                            //                             gradSdT(1) * eNormGd(1) +
+                            //                             gradSdT(2) * eNormGd(2));
+                            //     // ci(0) = W_c; penalty for collision avoidance
+                            //     gradC.block<6, 3>(i * 6, 0) += node * step * weightPos * 3.0 * violaPosSqr * gradSdC;
+                            //     gradT(i) += node * weightPos * (3.0 * violaPosSqr * gradSignedDt * step + violaPosCub / integralResolution);
 
-                                pena += weightPos * violaPosCub;
+                            //     pena += weightPos * violaPosCub;
+                            // }
+                            if (smoothedL1(violaPos, smoothFactor, violaPosPena, violaPosPenaD))
+                            {
+                                // TODO Implicit SDF Planner
+                                stepGradQuat(0) = outerNormal.transpose() * getQuatTransDW(quat) * ellipsoid;
+                                stepGradQuat(1) = outerNormal.transpose() * getQuatTransDX(quat) * ellipsoid;
+                                stepGradQuat(2) = outerNormal.transpose() * getQuatTransDY(quat) * ellipsoid;
+                                stepGradQuat(3) = outerNormal.transpose() * getQuatTransDZ(quat) * ellipsoid;
+                                gradQuat += weightPos * violaPosPenaD * stepGradQuat;
+                                gradPos += weightPos * violaPosPenaD * outerNormal;
+                                pena += weightPos * violaPosPena;
                             }
                         }
                         else if(modelType == static_cast<int>(Model::POLYHEDRON)) {
@@ -957,7 +1062,8 @@ namespace gcopter
             lbfgs_params.past = 3;
             lbfgs_params.min_step = 1.0e-32;
             // lbfgs_params.g_epsilon = 0.0;
-            lbfgs_params.g_epsilon = 1.0e-16;
+            // lbfgs_params.g_epsilon = 1.0e-16;
+            lbfgs_params.g_epsilon = FLT_EPSILON;
             lbfgs_params.delta = relCostTol;
 
             int ret = lbfgs::lbfgs_optimize(x,

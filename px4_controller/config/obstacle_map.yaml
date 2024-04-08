@@ -64,7 +64,7 @@ IntegralIntervs:            16
 RelCostTol:                 1.0e-5
 
 ## Modelling Parameters
-ModelType:                  0
+ModelType:                  2
 # Ellipsoid
 HorizHalfLen:               0.25
 VertHalfLen:                0.075
