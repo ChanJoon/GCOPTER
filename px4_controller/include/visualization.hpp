@@ -20,6 +20,8 @@
 
 struct Config
 {
+    std::string targetTopic;
+    double numTargets;
     XmlRpc::XmlRpcValue waypoints;
     std::string mapTopic;
     std::string odomTopic;
@@ -67,6 +69,10 @@ struct Config
 
     Config(const ros::NodeHandle &nh_priv)
     {
+        // For simple planning
+        nh_priv.getParam("TargetTopic", targetTopic);
+        // For multi points planning
+        nh_priv.getParam("NumTargets", numTargets);
         nh_priv.getParam("WayPoints", waypoints);
         nh_priv.getParam("MapTopic", mapTopic);
         nh_priv.getParam("OdomTopic", odomTopic);

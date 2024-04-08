@@ -60,6 +60,20 @@ target_link_libraries(position_controller_node
   ${catkin_LIBRARIES}
 )
 
+add_executable(simple_planning src/simple_planning.cpp)
+target_link_libraries(simple_planning
+  ${OMPL_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(simple_planning px4_controller_generate_messages_cpp)
+
+add_executable(multi_points_planning src/multi_points_planning.cpp)
+target_link_libraries(multi_points_planning
+  ${OMPL_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+add_dependencies(multi_points_planning px4_controller_generate_messages_cpp)
+
 add_executable(race_track_planning src/race_track_planning.cpp)
 target_link_libraries(race_track_planning
   ${OMPL_LIBRARIES}
