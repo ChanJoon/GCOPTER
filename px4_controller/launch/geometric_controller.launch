@@ -21,6 +21,9 @@
           <param name="Kv_x" value="5.0"/>
           <param name="Kv_y" value="5.0"/>
           <param name="Kv_z" value="10.0"/>
+          <param name="init_pos_x" value="0.0"/>
+          <param name="init_pos_y" value="0.0"/>
+          <param name="init_pos_z" value="3.0"/>
   </node>
 
   <!-- Launch rqt_reconfigure -->

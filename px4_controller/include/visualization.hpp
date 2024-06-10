@@ -142,6 +142,7 @@ public:
     ros::Publisher tiltPub;
     ros::Publisher bdrPub;
     ros::Publisher ellipsoidPub;
+    ros::Publisher cuboidPub;
     ros::Publisher quadrotorPub;
 
 public:
@@ -160,6 +161,7 @@ public:
         bdrPub = nh.advertise<std_msgs::Float64>("/visualizer/body_rate", 1000);
 
         ellipsoidPub = nh.advertise<visualization_msgs::MarkerArray>("/visualizer/ellipsoid", 1);
+        cuboidPub = nh.advertise<visualization_msgs::MarkerArray>("/visualizer/cuboid", 1);
         quadrotorPub = nh.advertise<visualization_msgs::MarkerArray>("/visualizer/quadrotor", 1);    
     }
 
@@ -480,6 +482,58 @@ public:
         }
 
         ellipsoidPub.publish(ellipsoidMarkers);
+    }
+
+    template <int D>
+    inline void visualizeCuboid(const Trajectory<D> &traj, const int samples)
+    {
+        visualization_msgs::Marker cuboidMarker;
+        visualization_msgs::MarkerArray cuboidMarkers;
+
+        cuboidMarker.id = 0;
+        cuboidMarker.type = visualization_msgs::Marker::CUBE;
+        // cuboidMarker.mesh_resource = config.cuboidPath;
+        cuboidMarker.header.stamp = ros::Time::now();
+        cuboidMarker.header.frame_id = config.odomFrame;
+        cuboidMarker.pose.orientation.w = 1.00;
+        cuboidMarker.action = visualization_msgs::Marker::ADD;
+        cuboidMarker.ns = "cuboids";
+        cuboidMarker.color.r = config.ellipsoidVizRGBA(0);
+        cuboidMarker.color.g = config.ellipsoidVizRGBA(1);
+        cuboidMarker.color.b = config.ellipsoidVizRGBA(2);
+        cuboidMarker.color.a = config.ellipsoidVizRGBA(3);
+        cuboidMarker.scale.x = config.horizHalfLen * 2.0;
+        cuboidMarker.scale.y = config.horizHalfLen * 2.0;
+        cuboidMarker.scale.z = config.vertHalfLen * 2.0;
+
+        cuboidMarker.action = visualization_msgs::Marker::DELETEALL;
+        cuboidMarkers.markers.push_back(cuboidMarker);
+        cuboidPub.publish(cuboidMarkers);
+        cuboidMarker.action = visualization_msgs::Marker::ADD;
+        cuboidMarkers.markers.clear();
+
+        double dt = traj.getTotalDuration() / samples;
+        geometry_msgs::Point point;
+        Eigen::Vector3d pos;
+        Eigen::Matrix3d rotM;
+        Eigen::Quaterniond quat;
+        for (int i = 0; i <= samples; i++)
+        {
+            pos = traj.getPos(dt * i);
+            cuboidMarker.pose.position.x = pos(0);
+            cuboidMarker.pose.position.y = pos(1);
+            cuboidMarker.pose.position.z = pos(2);
+            traj.getRotation(dt * i, 0.0, config.gravAcc, rotM);
+            quat = Eigen::Quaterniond(rotM);
+            cuboidMarker.pose.orientation.w = quat.w();
+            cuboidMarker.pose.orientation.x = quat.x();
+            cuboidMarker.pose.orientation.y = quat.y();
+            cuboidMarker.pose.orientation.z = quat.z();
+            cuboidMarkers.markers.push_back(cuboidMarker);
+            cuboidMarker.id++;
+        }
+
+        cuboidPub.publish(cuboidMarkers);
     }
 
     template <int D>

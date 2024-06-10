@@ -39,6 +39,7 @@ private:
     ros::Subscriber trajSub;
     ros::Subscriber odomSub;
     ros::Publisher trajPub;
+    ros::Publisher desOdomPub;
     ros::Publisher cmdPub;
     ros::Publisher attPub;
     ros::Publisher flatReferencePub;
@@ -98,6 +99,8 @@ public:
 																 ros::TransportHints().tcpNoDelay());
         trajSub = nh.subscribe("trajectory", 2, &MultiPointsPlanner::rcvTrajectoryCallabck, this);
         trajPub = nh.advertise<quadrotor_msgs::PolynomialTrajectory>("trajectory", 50);
+        desOdomPub = nh.advertise<nav_msgs::Odometry>("desired_state", 50);
+
         // Position controller (Fast-Racing)
         cmdPub = nh.advertise<quadrotor_msgs::PositionCommand>("position_command", 50);
         attPub = nh.advertise<mavros_msgs::AttitudeTarget>("/mavros/setpoint_raw/attitude", 50);
@@ -106,58 +109,59 @@ public:
         flatReferencePub = nh.advertise<controller_msgs::FlatTarget>("reference/flatsetpoint", 1);
     }
 
-		inline void odomCallback(const nav_msgs::Odometry &msg)
-		{
-			if (!odomInitialized)
-			{
-				init_odom = msg;
-				odomInitialized = true;
-			}
-			else
-			{
-				odom = msg;
-				if(state == INIT )
-				{
-						cmd.position.x = init_odom.pose.pose.position.x;
-						cmd.position.y = init_odom.pose.pose.position.y;
-						cmd.position.z = 3.0;		// Temporailiy set to 3.0 m
-						
-						cmd.header.stamp = odom.header.stamp;
-						cmd.header.frame_id = "/world_enu";
-						//cmd.trajectory_flag = _traj_flag;
-						cmd.trajectory_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_READY;
+    inline void odomCallback(const nav_msgs::Odometry &msg)
+    {
+        if (!odomInitialized)
+        {
+            init_odom = msg;
+            odomInitialized = true;
+        }
+        else
+        {
+            odom = msg;
+            if(state == INIT )
+            {
+                    cmd.position.x = init_odom.pose.pose.position.x;
+                    cmd.position.y = init_odom.pose.pose.position.y;
+                    cmd.position.z = 3.0;		// Temporailiy set to 3.0 m
+                    
+                    cmd.header.stamp = odom.header.stamp;
+                    cmd.header.frame_id = "/world_enu";
+                    //cmd.trajectory_flag = _traj_flag;
+                    cmd.trajectory_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_READY;
 
-						cmd.velocity.x = 0.0;
-						cmd.velocity.y = 0.0;
-						cmd.velocity.z = 0.0;
-						
-						cmd.acceleration.x = 0.0;
-						cmd.acceleration.y = 0.0;
-						cmd.acceleration.z = 0.0;
+                    cmd.velocity.x = 0.0;
+                    cmd.velocity.y = 0.0;
+                    cmd.velocity.z = 0.0;
+                    
+                    cmd.acceleration.x = 0.0;
+                    cmd.acceleration.y = 0.0;
+                    cmd.acceleration.z = 0.0;
 
-						cmd.jerk.x = 0.0;
-						cmd.jerk.y = 0.0;
-						cmd.jerk.z = 0.0;
-						cmd.yaw = acos(-1)/2;	// == PI / 2
-						cmdPub.publish(cmd);
-                        pubflatrefState();
+                    cmd.jerk.x = 0.0;
+                    cmd.jerk.y = 0.0;
+                    cmd.jerk.z = 0.0;
+                    cmd.yaw = acos(-1)/2;	// == PI / 2
+                    cmdPub.publish(cmd);
+                    pubflatrefState();
+                    pubDesiredState();
 
-						return;
-				}
+                    return;
+            }
 
-				// change the order between #2 and #3. zxzxzxzx
-				
-				// #2. try to calculate the new state
-				if (state == TRAJ && ( (odom.header.stamp - _start_time).toSec() / mag_coeff > (_final_time - _start_time).toSec() ) )
-				{
-						state = HOVER;
-						_traj_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_COMPLETED;
-				}
+            // change the order between #2 and #3. zxzxzxzx
+            
+            // #2. try to calculate the new state
+            if (state == TRAJ && ( (odom.header.stamp - _start_time).toSec() / mag_coeff > (_final_time - _start_time).toSec() ) )
+            {
+                    state = HOVER;
+                    _traj_flag = quadrotor_msgs::PositionCommand::TRAJECTORY_STATUS_COMPLETED;
+            }
 
-				// #3. try to publish command
-				pubPositionCommand();
-			}
-		}
+            // #3. try to publish command
+            pubPositionCommand();
+        }
+    }
 
     inline quadrotor_msgs::PolynomialTrajectory traj2msg(Trajectory<5> traj)
     {
@@ -366,6 +370,7 @@ public:
         // #4. just publish
         cmdPub.publish(cmd);
         pubflatrefState();
+        pubDesiredState();
     }
 
     inline void pubflatrefState() {
@@ -384,6 +389,27 @@ public:
         msg.acceleration.y = cmd.acceleration.y;
         msg.acceleration.z = cmd.acceleration.z;
         flatReferencePub.publish(msg);
+    }
+
+    inline void pubDesiredState()
+    {
+        nav_msgs::Odometry msg;
+
+        msg.header.stamp = cmd.header.stamp;
+        msg.header.frame_id = "map";
+        msg.pose.pose.position.x = cmd.position.x;
+        msg.pose.pose.position.y = cmd.position.y;
+        msg.pose.pose.position.z = cmd.position.z;
+
+        Eigen::Vector3d rpy(0, 0, cmd.yaw);
+        Eigen::Quaterniond q = Eigen::Quaterniond(Eigen::AngleAxisd(rpy.z(), Eigen::Vector3d::UnitZ()) *
+                               Eigen::AngleAxisd(rpy.y(), Eigen::Vector3d::UnitY()) *
+                               Eigen::AngleAxisd(rpy.x(), Eigen::Vector3d::UnitX()));
+        msg.pose.pose.orientation.w = q.w();
+        msg.pose.pose.orientation.x = q.x();
+        msg.pose.pose.orientation.y = q.y();
+        msg.pose.pose.orientation.z = q.z();
+        desOdomPub.publish(msg);
     }
 
     inline void mapCallBack(const sensor_msgs::PointCloud2::ConstPtr &msg)

@@ -4,7 +4,7 @@
     args="/visualizer/speed /visualizer/total_thrust /visualizer/tilt_angle /visualizer/body_rate">
   </node> -->
   
-  <node pkg="px4_controller" type="simple_planning" name="simple_planning_node" output="screen" launch-prefix="gdb -ex run --args">
+  <node pkg="px4_controller" type="simple_planning" name="simple_planning_node" output="screen" >
   	<rosparam file="$(find px4_controller)/config/simple_planning.yaml" command="load" />
   </node>
 

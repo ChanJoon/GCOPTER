@@ -595,6 +595,7 @@ public:
                 trajStamp = ros::Time::now().toSec();
                 visualizer.visualize(traj, routes);
                 visualizer.visualizeEllipsoid(traj, 450);
+                visualizer.visualizeCuboid(traj, 450);
                 visualizer.visualizeQuadrotor(traj, 450);
             }
             traj_msg = traj2msg(traj);
